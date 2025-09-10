@@ -932,9 +932,19 @@ def test_auth():
 def check_env_file():
     """Check if .env file exists and has required variables."""
     import os
-    if not os.path.exists('.env'):
-        write_log("ERROR: .env file not found in current directory")
-        return False
+    # Try to load .env file if it exists, otherwise use environment variables
+try:
+    if os.path.exists('.env'):
+        load_dotenv()
+        print("INFO: .env file loaded successfully")
+    else:
+        print("INFO: No .env file found, using system environment variables")
+except Exception as e:
+    print(f"INFO: Could not load .env file: {e}")
+
+# Continue with getting environment variables
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
     
     required_vars = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
     for var in required_vars:
@@ -983,3 +993,4 @@ if __name__ == "__main__":
     
 
     start_scheduler()
+
