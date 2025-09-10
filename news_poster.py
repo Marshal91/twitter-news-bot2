@@ -946,7 +946,7 @@ except Exception as e:
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
     
-    required_vars = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
+required_vars = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
     for var in required_vars:
         value = os.getenv(var)
         if not value:
@@ -993,4 +993,5 @@ if __name__ == "__main__":
     
 
     start_scheduler()
+
 
