@@ -52,8 +52,8 @@ CONTENT_HASH_LOG = "posted_content_hashes.txt"
 IMAGE_FOLDER = "images"
 
 # Rate limiting configuration
-DAILY_POST_LIMIT = 6
-POST_INTERVAL_MINUTES = 60
+DAILY_POST_LIMIT = 12
+POST_INTERVAL_MINUTES = 120
 last_post_time = None
 FRESHNESS_WINDOW = timedelta(hours=24)
 
@@ -762,7 +762,7 @@ def run_dynamic_job():
 
 def schedule_posts():
     """Schedule posts with better timing."""
-    times = ["19:17", "20:40", "21:42", "22:46", "23:46", "00:47"]
+    times = ["23:55", "01:56", "03:58", "06:00", "08:01", "10:03","12:05", "14:07", "16:09", "18:11", "20:15", "22:20"]
     for t in times:
         schedule.every().day.at(t).do(run_dynamic_job)
         write_log(f"Dynamic job scheduled at {t}")
@@ -987,3 +987,4 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
