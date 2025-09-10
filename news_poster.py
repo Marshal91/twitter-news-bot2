@@ -22,8 +22,15 @@ from bs4 import BeautifulSoup
 import logging
 from logging.handlers import RotatingFileHandler
 
-# Load .env variables
-load_dotenv()
+# Try to load .env file if it exists, otherwise use environment variables
+try:
+    if os.path.exists('.env'):
+        load_dotenv()
+        print("INFO: .env file loaded successfully")
+    else:
+        print("INFO: No .env file found, using system environment variables")
+except Exception as e:
+    print(f"INFO: Could not load .env file: {e}")
 
 # =========================
 # CONFIGURATION
@@ -851,10 +858,13 @@ def test_single_post(category=None):
     
     # Check rate limits before testing
     limits = check_rate_limits()
-    if limits and limits['remaining'] == 0:
-        reset_time = datetime.fromtimestamp(limits['reset'])
-        write_log(f"Cannot test - rate limit exhausted. Resets at: {reset_time}")
-        return False
+    if limits and 'resources' in limits and 'statuses' in limits['resources']:
+        if '/statuses/update' in limits['resources']['statuses']:
+            remaining = limits['resources']['statuses']['/statuses/update']['remaining']
+            if remaining == 0:
+                reset_time = datetime.fromtimestamp(limits['resources']['statuses']['/statuses/update']['reset'])
+                write_log(f"Cannot test - rate limit exhausted. Resets at: {reset_time}")
+                return False
     
     return post_dynamic_update(category, trend_term)
 
@@ -926,31 +936,16 @@ def test_auth():
         return True
     except Exception as e:
         write_log(f"Authentication failed: {e}")
-        write_log("Please check your Twitter API credentials in .env file")
+        write_log("Please check your Twitter API credentials in environment variables")
         return False
 
 def check_env_file():
-    """Check if .env file exists and has required variables."""
-    import os
-    # Try to load .env file if it exists, otherwise use environment variables
-try:
-    if os.path.exists('.env'):
-        load_dotenv()
-        print("INFO: .env file loaded successfully")
-    else:
-        print("INFO: No .env file found, using system environment variables")
-except Exception as e:
-    print(f"INFO: Could not load .env file: {e}")
-
-# Continue with getting environment variables
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
-    
-required_vars = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
+    """Check if environment variables exist and are valid."""
+    required_vars = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
     for var in required_vars:
         value = os.getenv(var)
         if not value:
-            write_log(f"ERROR: {var} not found in .env file")
+            write_log(f"ERROR: {var} not found in environment variables")
             return False
         elif len(value) < 10:
             write_log(f"WARNING: {var} seems too short: {len(value)} characters")
@@ -962,9 +957,9 @@ required_vars = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN"
 if __name__ == "__main__":
     write_log("=== TWITTER BOT STARTUP DIAGNOSTICS ===")
     
-    # Check .env file first
+    # Check environment variables first
     if not check_env_file():
-        write_log("Fix .env file issues before running bot")
+        write_log("Fix environment variable issues before running bot")
         exit(1)
     
     validate_env_vars()
@@ -979,7 +974,7 @@ if __name__ == "__main__":
         write_log("2. Check your app is active")
         write_log("3. Regenerate API keys if needed")
         write_log("4. Ensure app has Read/Write permissions")
-        write_log("5. Update .env file with correct keys")
+        write_log("5. Update environment variables with correct keys")
         exit(1)
     
     # If auth works, check rate limits
@@ -991,7 +986,4 @@ if __name__ == "__main__":
     #test_single_post("F1")
     # test_simulation_mode()
     
-
     start_scheduler()
-
-
