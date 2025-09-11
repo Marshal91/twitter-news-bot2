@@ -21,6 +21,8 @@ from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import logging
 from logging.handlers import RotatingFileHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 # Try to load .env file if it exists, otherwise use environment variables
 try:
@@ -243,6 +245,27 @@ def write_log(message, level="info"):
         logging.error(message)
     else:
         logging.info(message)
+
+# =========================
+# HEALTH SERVER FOR RENDER WEB SERVICE
+# =========================
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Twitter Bot is running')
+    
+    def log_message(self, format, *args):
+        # Suppress server access logs
+        pass
+
+def start_health_server():
+    """Start health check server for Render Web Service."""
+    port = int(os.environ.get('PORT', 8080))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    write_log(f"Health server starting on port {port}")
+    server.serve_forever()
 
 # =========================
 # UTILITY FUNCTIONS
@@ -982,9 +1005,16 @@ if __name__ == "__main__":
     check_rate_limits()
     
     write_log("=== STARTING BOT SCHEDULER ===")
+
+    # Start health server in background thread for Render Web Service
+    
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    
     # Uncomment ONE of these for testing:
     #test_single_post("F1")
     # test_simulation_mode()
     
     start_scheduler()
+
 
