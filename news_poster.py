@@ -10,7 +10,7 @@ import random
 import requests
 import feedparser
 import tweepy
-import schedule
+#import schedule
 import time
 import hashlib
 from datetime import datetime, timedelta
@@ -782,23 +782,37 @@ def run_dynamic_job():
 # =========================
 # SCHEDULER
 # =========================
-
-def schedule_posts():
+def should_post_now():
+    """Check if current time matches any scheduled time"""
+    current_time = datetime.utcnow().strftime("%H:%M")
+    scheduled_times = ["23:50", "01:56", "03:58", "06:00", "08:01", "10:03", 
+                      "12:05", "14:07", "16:09", "18:11", "20:15", "22:20"]
+    return current_time in scheduled_times
+    
+#def schedule_posts():
     """Schedule posts with better timing."""
-    times = ["23:55", "01:56", "03:58", "06:00", "08:01", "10:03","12:05", "14:07", "16:09", "18:11", "20:15", "22:20"]
-    for t in times:
-        schedule.every().day.at(t).do(run_dynamic_job)
-        write_log(f"Dynamic job scheduled at {t}")
+    #times = ["23:55", "01:56", "03:58", "06:00", "08:01", "10:03","12:05", "14:07", "16:09", "18:11", "20:15", "22:20"]
+    #for t in times:
+        #schedule.every().day.at(t).do(run_dynamic_job)
+        #write_log(f"Dynamic job scheduled at {t}")
 
 def start_scheduler():
-    """Start the scheduler with initial setup."""
-    schedule_posts()
-    write_log("Scheduler started with dynamic trending jobs.")
+    """Simple loop that checks every minute"""
+    write_log("Starting manual scheduler...")
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
+    last_checked_minute = None
     
     while True:
-        schedule.run_pending()
-        time.sleep(60)
+        current_minute = datetime.utcnow().strftime("%H:%M")
+        
+        # Only check once per minute
+        if current_minute != last_checked_minute:
+            if should_post_now():
+                write_log(f"Scheduled time reached: {current_minute}")
+                run_dynamic_job()
+            last_checked_minute = current_minute
+            
+        time.sleep(30)  # Check every 30 seconds
 
 # =========================
 # TESTING & MANUAL FUNCTIONS
@@ -1016,6 +1030,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
