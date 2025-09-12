@@ -1012,10 +1012,11 @@ if __name__ == "__main__":
     health_thread.start()
     
     # Uncomment ONE of these for testing:
-    test_single_post("Arsenal")
+    test_single_post("F1")
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
