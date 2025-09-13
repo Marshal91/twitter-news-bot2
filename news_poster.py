@@ -242,17 +242,22 @@ twitter_client = tweepy.Client(
 # LOGGING
 # =========================
 
+# Create logs directory if it doesn't exist
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s: %(message)s",
     handlers=[
-        RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=5),
+        RotatingFileHandler('logs/bot_activity.log', maxBytes=10*1024*1024, backupCount=5),
+        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),  # Keep your original
         logging.StreamHandler()
     ]
 )
 
 def write_log(message, level="info"):
-    """Append timestamped logs to bot_log.txt"""
+    """Enhanced logging to both console and persistent file"""
     if level == "error":
         logging.error(message)
     else:
@@ -923,8 +928,8 @@ def run_dynamic_job():
 def should_post_now():
     """Check if current time matches any scheduled time"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-    scheduled_times = ["07:50", "09:50", "11:50", "13:50", "15:50", "17:50", 
-                      "19:50", "21:50", "23:50", "01:50", "03:50", "05:50"]
+    scheduled_times = ["10:20", "12:20", "14:20", "16:20", "18:20", "20:20", 
+                      "22:20", "00:20", "02:20", "04:20", "06:20", "08:20"]
     return current_minute in scheduled_times
     
 #def schedule_posts():
@@ -1168,6 +1173,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
