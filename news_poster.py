@@ -929,7 +929,7 @@ def should_post_now():
     
 #def schedule_posts():
     """Schedule posts with better timing."""
-    #times = ["23:55", "01:56", "03:58", "06:00", "07:10", "10:03","12:05", "14:07", "16:09", "18:11", "20:15", "22:20"]
+    #times = ["23:55", "01:56", "03:58", "06:00", "07:35", "10:03","12:05", "14:07", "16:09", "18:11", "20:15", "22:20"]
     #for t in times:
         #schedule.every().day.at(t).do(run_dynamic_job)
         #write_log(f"Dynamic job scheduled at {t}")
@@ -941,7 +941,7 @@ def start_scheduler():
     last_checked_minute = None
     
     while True:
-        current_minute = datetime.utcnow().strftime("%H:%M")
+        current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
         
         # Only check once per minute
         if current_minute != last_checked_minute:
@@ -1168,6 +1168,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
