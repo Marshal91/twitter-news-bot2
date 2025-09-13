@@ -108,6 +108,16 @@ RSS_FEEDS = {
         "https://insideevs.com/rss/news/",
         "https://www.notateslaapp.com/feed"
     ]
+    "Science Facts": [
+        "https://www.sciencedaily.com/rss/all.xml",
+        "https://phys.org/rss-feed/",
+        "https://www.scientificamerican.com/feed/"
+    ],
+    "Philosophy": [
+        "https://plato.stanford.edu/rss/sep.xml",
+        "https://www.philosophynow.org/rss",
+        "https://philosophicalsociety.com/feed/"
+    ]
 }
 
 # Hashtag pools
@@ -121,6 +131,8 @@ CATEGORY_HASHTAGS = {
     "Cycling": ["#Cycling", "#TourDeFrance", "#ProCycling", "#Vingegaard", "#Pogacar", "#CyclistLife", "#RoadCycling"],
     "Space Exploration": ["#Space", "#NASA", "#SpaceX", "#Mars", "#MoonMission", "#Astronomy", "#Starlink", "#SpaceExploration"],
     "Tesla": ["#Tesla", "#ElonMusk", "#ElectricCars", "#ModelY", "#Cybertruck", "#TeslaNews", "#EV", "#SustainableTransport"]
+    "Science Facts": ["#Science", "#DidYouKnow", "#ScienceFacts", "#Research", "#Discovery", "#STEM", "#TodayILearned"],
+    "Philosophy": ["#Philosophy", "#DeepThoughts", "#Wisdom", "#Life", "#Truth", "#Ethics", "#Consciousness"]
 }
 
 # Mapping trends to categories (disabled for now)
@@ -477,9 +489,44 @@ def extract_article_content(url):
         except Exception as e:
             write_log(f"Could not extract content from {url}: {e}")
             return None
+#replacing this part 
+#def generate_content_aware_post(title, category, article_url, trend_term=None):
+    """Generate relevant post based on actual article content using GPT."""
+    #try:
+        #article_content = extract_article_content(article_url)
+        #content_context = f"Title: {title}\n"
+        #if article_content:
+            #content_context += f"Content: {article_content}\n"
+        #content_context += f"Category: {category}\n"
+       # if trend_term:
+            #content_context += f"Trending topic: {trend_term}\n"
+        
+        #prompt = f"""Based on this news article, create an engaging Twitter post (under 200 characters to leave room for URL and hashtags):
+
+#{content_context}
+
+#Requirements:
+#- Be specific about the actual content/news
+#- Make it engaging and conversational
+#- Don't use generic templates
+#- Focus on the key newsworthy element
+#- Use appropriate tone for {category}
+#- Include relevant emojis if appropriate
+
+#Write ONLY the tweet text, no quotes or explanations:"""
+
+        #response = openai_client.chat.completions.create(
+           # model="gpt-4o-mini",
+            #messages=[
+               #{"role": "system", "content": "You are a witty social media manager creating engaging, specific tweets about current events."},
+               # {"role": "user", "content": prompt}
+            #],
+            #max_tokens=100,
+            #temperature=0.7
+        #)
 
 def generate_content_aware_post(title, category, article_url, trend_term=None):
-    """Generate relevant post based on actual article content using GPT."""
+    """Generate viral-worthy posts that drive engagement."""
     try:
         article_content = extract_article_content(article_url)
         content_context = f"Title: {title}\n"
@@ -489,28 +536,35 @@ def generate_content_aware_post(title, category, article_url, trend_term=None):
         if trend_term:
             content_context += f"Trending topic: {trend_term}\n"
         
-        prompt = f"""Based on this news article, create an engaging Twitter post (under 200 characters to leave room for URL and hashtags):
+        # Enhanced prompt for viral content
+        prompt = f"""Create a highly engaging Twitter post that drives retweets, likes, and comments (under 200 characters):
 
 {content_context}
 
-Requirements:
-- Be specific about the actual content/news
-- Make it engaging and conversational
-- Don't use generic templates
-- Focus on the key newsworthy element
-- Use appropriate tone for {category}
-- Include relevant emojis if appropriate
+Make it viral by using these techniques:
+- Ask thought-provoking questions that demand answers
+- Use contrarian takes or challenge conventional wisdom  
+- Include bold predictions or hot takes
+- Create "Wait, what?" moments that make people double-take
+- Use psychological triggers: curiosity gaps, social proof, controversy
+- End with questions that spark debate in replies
+
+Examples of viral patterns:
+- "Everyone thinks X, but here's why Y is actually true..."
+- "This changes everything we thought we knew about..."
+- "Unpopular opinion: [controversial take]. Am I wrong?"
+- "Plot twist: [unexpected angle]"
 
 Write ONLY the tweet text, no quotes or explanations:"""
 
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a witty social media manager creating engaging, specific tweets about current events."},
+                {"role": "system", "content": "You are a viral content creator who understands social media psychology and creates posts that people can't help but engage with."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=100,
-            temperature=0.7
+            max_tokens=120,
+            temperature=0.8  # Higher temperature for more creative outputs
         )
         gpt_text = response.choices[0].message.content.strip()
         
@@ -569,7 +623,71 @@ def generate_fallback_post(title, category, trend_term=None):
         "Space Exploration": ["Space news:", "NASA update:"],
         "Tesla": ["Tesla news:", "EV update:"]
     }
+
+def generate_science_philosophy_post(title, category, article_url=None):
+    """Generate thought-provoking content for science/philosophy categories."""
     
+    if category == "Science Facts":
+        prompt = """Create a mind-blowing science fact that makes people go "Wait, seriously?" 
+        
+        Requirements:
+        - Make it counterintuitive or surprising
+        - Include a "Did you know..." or "Fun fact:" opener
+        - End with a question that makes people think or share with friends
+        - Keep it under 200 characters
+        
+        Examples:
+        - "Did you know honey never spoils? Archaeologists found 3000-year-old honey in Egyptian tombs that's still edible. What other 'perishable' foods might last forever?"
+        - "Your brain uses 20% of your energy but only weighs 2% of your body. It's literally the most expensive organ to run. Worth the investment?"
+        
+        Write ONLY the tweet text:"""
+        
+    elif category == "Philosophy":
+        prompt = """Create a philosophical thought that sparks deep conversation and self-reflection.
+        
+        Requirements:
+        - Challenge how people think about life, reality, or existence
+        - Make it relatable to everyday experience
+        - End with a question that has no easy answer
+        - Avoid being preachy or pretentious
+        
+        Examples:
+        - "If you replaced every part of a ship over time, is it still the same ship? Now apply this to yourself - every cell in your body replaces itself every 7 years. Are you still you?"
+        - "We spend our whole lives learning how to live, then die just when we're getting good at it. What would you do differently if you had 1000 years?"
+        
+        Write ONLY the tweet text:"""
+    
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You create thought-provoking content that makes people stop scrolling and start thinking."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100,
+            temperature=0.9
+        )
+        return validate_tweet_length(response.choices[0].message.content.strip())
+    except Exception as e:
+        write_log(f"Special content generation failed: {e}")
+        return generate_fallback_philosophical_content(category)
+
+def generate_fallback_philosophical_content(category):
+    """Fallback content for science/philosophy when GPT fails."""
+    if category == "Science Facts":
+        facts = [
+            "Did you know a single teaspoon of neutron star material weighs 6 billion tons? That's heavier than Mount Everest. What else in space defies our earthly logic?",
+            "Octopuses have three hearts and blue blood. Two hearts pump blood to the gills, one to the body. Makes human biology seem simple, doesn't it?",
+            "There are more possible chess games than atoms in the observable universe. Yet we think we can predict the future. Thoughts?"
+        ]
+    else:  # Philosophy
+        thoughts = [
+            "If free will is an illusion, are you choosing to read this or were you always going to? Does it matter either way?",
+            "Every expert was once a beginner. Every pro was once an amateur. Every icon was once an unknown. What's stopping you?",
+            "We fear death, yet we waste life. We crave time, yet we kill time. We seek meaning, yet we avoid thinking. Why do we sabotage what we want most?"
+        ]
+    
+    return random.choice(facts if category == "Science Facts" else thoughts)
     prefix = random.choice(category_prefixes.get(category, ["News:"]))
     tweet_text = f"{prefix} {main_part}"
     
@@ -692,6 +810,26 @@ def fallback_tweet(category):
 
 def post_dynamic_update(category, trend_term=None):
     """Post update for category with content-aware generation and URL validation."""
+
+if category in ["Science Facts", "Philosophy"]:
+    if not can_post_now():
+        write_log(f"Rate limited - will retry {category} on next scheduled run")
+        return False
+    
+    # 70% chance to use RSS feeds, 30% chance for original content
+    if random.random() < 0.7:
+        # Use RSS feeds - let the normal process handle it
+        write_log(f"Using RSS feeds for {category}")
+        # Don't return here, let it fall through to the normal RSS processing
+    else:
+        # Generate original content
+        write_log(f"Generating original content for {category}")
+        tweet_text = generate_science_philosophy_post("", category)
+        if post_tweet(tweet_text, category):
+            write_log(f"Posted original {category.lower()} content")
+            return True
+        return False
+        
     articles = get_articles_for_category(category)
     fresh_articles = [a for a in articles if is_fresh(a)]
     target_articles = fresh_articles if fresh_articles else articles
@@ -1030,6 +1168,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
