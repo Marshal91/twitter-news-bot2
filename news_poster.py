@@ -111,12 +111,7 @@ RSS_FEEDS = {
     "Science Facts": [
         "https://www.sciencedaily.com/rss/all.xml",
         "https://phys.org/rss-feed/",
-        "https://www.scientificamerican.com/feed/"
-    ],
-    "Philosophy": [
-        "https://plato.stanford.edu/rss/sep.xml",
-        "https://www.philosophynow.org/rss",
-        "https://philosophicalsociety.com/feed/"
+        "https://www.scientificamerican.com/feed/"    
     ]
 }
 
@@ -131,8 +126,7 @@ CATEGORY_HASHTAGS = {
     "Cycling": ["#Cycling", "#TourDeFrance", "#ProCycling", "#Vingegaard", "#Pogacar", "#CyclistLife", "#RoadCycling"],
     "Space Exploration": ["#Space", "#NASA", "#SpaceX", "#Mars", "#MoonMission", "#Astronomy", "#Starlink", "#SpaceExploration"],
     "Tesla": ["#Tesla", "#ElonMusk", "#ElectricCars", "#ModelY", "#Cybertruck", "#TeslaNews", "#EV", "#SustainableTransport"],
-    "Science Facts": ["#Science", "#DidYouKnow", "#ScienceFacts", "#Research", "#Discovery", "#STEM", "#TodayILearned"],
-    "Philosophy": ["#Philosophy", "#DeepThoughts", "#Wisdom", "#Life", "#Truth", "#Ethics", "#Consciousness"]
+    "Science Facts": ["#Science", "#DidYouKnow", "#ScienceFacts", "#Research", "#Discovery", "#STEM", "#TodayILearned"]
 }
 
 # Mapping trends to categories (disabled for now)
@@ -647,20 +641,20 @@ def generate_science_philosophy_post(title, category, article_url=None):
         
         Write ONLY the tweet text:"""
         
-    elif category == "Philosophy":
-        prompt = """Create a philosophical thought that sparks deep conversation and self-reflection.
+   # elif category == "Philosophy":
+        #prompt = """Create a philosophical thought that sparks deep conversation and self-reflection.
         
-        Requirements:
-        - Challenge how people think about life, reality, or existence
-        - Make it relatable to everyday experience
-        - End with a question that has no easy answer
-        - Avoid being preachy or pretentious
+       # Requirements:
+         # - Challenge how people think about life, reality, or existence
+        #  - Make it relatable to everyday experience
+        #  - End with a question that has no easy answer
+        #  - Avoid being preachy or pretentious
         
-        Examples:
-        - "If you replaced every part of a ship over time, is it still the same ship? Now apply this to yourself - every cell in your body replaces itself every 7 years. Are you still you?"
-        - "We spend our whole lives learning how to live, then die just when we're getting good at it. What would you do differently if you had 1000 years?"
+        #  Examples:
+        #  - "If you replaced every part of a ship over time, is it still the same ship? Now apply this to yourself - every cell in your body replaces itself every 7 years. Are you still you?"
+        #  - "We spend our whole lives learning how to live, then die just when we're getting good at it. What would you do differently if you had 1000 years?"
         
-        Write ONLY the tweet text:"""
+        #  Write ONLY the tweet text:"""
     
     try:
         response = openai_client.chat.completions.create(
@@ -685,11 +679,11 @@ def generate_fallback_philosophical_content(category):
             "Octopuses have three hearts and blue blood. Two hearts pump blood to the gills, one to the body. Makes human biology seem simple, doesn't it?",
             "There are more possible chess games than atoms in the observable universe. Yet we think we can predict the future. Thoughts?"
         ]
-    else:  # Philosophy
-        thoughts = [
-            "If free will is an illusion, are you choosing to read this or were you always going to? Does it matter either way?",
-            "Every expert was once a beginner. Every pro was once an amateur. Every icon was once an unknown. What's stopping you?",
-            "We fear death, yet we waste life. We crave time, yet we kill time. We seek meaning, yet we avoid thinking. Why do we sabotage what we want most?"
+     # else:  # Philosophy
+        #  thoughts = [
+           #   "If free will is an illusion, are you choosing to read this or were you always going to? Does it matter either way?",
+          #    "Every expert was once a beginner. Every pro was once an amateur. Every icon was once an unknown. What's stopping you?",
+          #    "We fear death, yet we waste life. We crave time, yet we kill time. We seek meaning, yet we avoid thinking. Why do we sabotage what we want most?"
         ]
     
     return random.choice(facts if category == "Science Facts" else thoughts)
@@ -1173,6 +1167,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
