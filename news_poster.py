@@ -107,7 +107,7 @@ RSS_FEEDS = {
         "https://electrek.co/feed/",
         "https://insideevs.com/rss/news/",
         "https://www.notateslaapp.com/feed"
-    ]
+    ],
     "Science Facts": [
         "https://www.sciencedaily.com/rss/all.xml",
         "https://phys.org/rss-feed/",
@@ -1168,6 +1168,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
