@@ -684,7 +684,7 @@ def generate_fallback_philosophical_content(category):
            #   "If free will is an illusion, are you choosing to read this or were you always going to? Does it matter either way?",
           #    "Every expert was once a beginner. Every pro was once an amateur. Every icon was once an unknown. What's stopping you?",
           #    "We fear death, yet we waste life. We crave time, yet we kill time. We seek meaning, yet we avoid thinking. Why do we sabotage what we want most?"
-        ]
+        #]
     
     return random.choice(facts if category == "Science Facts" else thoughts)
     prefix = random.choice(category_prefixes.get(category, ["News:"]))
@@ -1167,6 +1167,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
