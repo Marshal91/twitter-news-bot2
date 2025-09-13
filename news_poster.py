@@ -923,9 +923,9 @@ def run_dynamic_job():
 def should_post_now():
     """Check if current time matches any scheduled time"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-    scheduled_times = ["07:45", "09:46", "11:48", "13:50", "15:52", "17:55", 
-                      "19:57", "21:59", "00:02", "02:05", "04:08", "06:09"]
-    return current_time in scheduled_times
+    scheduled_times = ["07:50", "09:50", "11:50", "13:50", "15:50", "17:50", 
+                      "19:50", "21:50", "23:50", "01:50", "03:50", "05:50"]
+    return current_minute in scheduled_times
     
 #def schedule_posts():
     """Schedule posts with better timing."""
@@ -1168,6 +1168,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
