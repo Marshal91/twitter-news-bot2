@@ -130,7 +130,7 @@ CATEGORY_HASHTAGS = {
     "Crypto": ["#Cryptocurrency", "#Bitcoin", "#Ethereum", "#Blockchain", "#CryptoNews", "#DeFi", "#Web3", "#BTC"],
     "Cycling": ["#Cycling", "#TourDeFrance", "#ProCycling", "#Vingegaard", "#Pogacar", "#CyclistLife", "#RoadCycling"],
     "Space Exploration": ["#Space", "#NASA", "#SpaceX", "#Mars", "#MoonMission", "#Astronomy", "#Starlink", "#SpaceExploration"],
-    "Tesla": ["#Tesla", "#ElonMusk", "#ElectricCars", "#ModelY", "#Cybertruck", "#TeslaNews", "#EV", "#SustainableTransport"]
+    "Tesla": ["#Tesla", "#ElonMusk", "#ElectricCars", "#ModelY", "#Cybertruck", "#TeslaNews", "#EV", "#SustainableTransport"],
     "Science Facts": ["#Science", "#DidYouKnow", "#ScienceFacts", "#Research", "#Discovery", "#STEM", "#TodayILearned"],
     "Philosophy": ["#Philosophy", "#DeepThoughts", "#Wisdom", "#Life", "#Truth", "#Ethics", "#Consciousness"]
 }
@@ -1168,6 +1168,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
