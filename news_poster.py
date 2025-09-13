@@ -811,10 +811,10 @@ def fallback_tweet(category):
 def post_dynamic_update(category, trend_term=None):
     """Post update for category with content-aware generation and URL validation."""
 
-if category in ["Science Facts", "Philosophy"]:
-    if not can_post_now():
-        write_log(f"Rate limited - will retry {category} on next scheduled run")
-        return False
+    if category in ["Science Facts", "Philosophy"]:
+        if not can_post_now():
+            write_log(f"Rate limited - will retry {category} on next scheduled run")
+            return False
     
     # 70% chance to use RSS feeds, 30% chance for original content
     if random.random() < 0.7:
@@ -1168,6 +1168,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
