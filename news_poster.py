@@ -928,8 +928,8 @@ def run_dynamic_job():
 def should_post_now():
     """Check if current time matches any scheduled time"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-    scheduled_times = ["10:20", "12:20", "14:20", "16:20", "18:20", "20:20", 
-                      "22:20", "00:20", "02:20", "04:20", "06:20", "08:20"]
+    scheduled_times = ["10:30", "12:30", "14:30", "16:30", "18:30", "20:30", 
+                      "22:30", "00:30", "02:30", "04:30", "06:30", "08:30"]
     return current_minute in scheduled_times
     
 #def schedule_posts():
@@ -1173,6 +1173,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
