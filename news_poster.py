@@ -245,7 +245,7 @@ logging.basicConfig(
     format="[%(asctime)s] %(levelname)s: %(message)s",
     handlers=[
         RotatingFileHandler('logs/bot_activity.log', maxBytes=10*1024*1024, backupCount=5),
-        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),  # Keep your original
+        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),
         logging.StreamHandler()
     ]
 )
@@ -256,6 +256,10 @@ def write_log(message, level="info"):
         logging.error(message)
     else:
         logging.info(message)
+
+# Debug logging test
+write_log("Logging system initialized - testing log file creation")
+write_log(f"Logs directory exists: {os.path.exists('logs')}")
 
 # =========================
 # HEALTH SERVER FOR RENDER WEB SERVICE
@@ -437,7 +441,6 @@ def get_articles_for_category(category):
         write_log(f"No articles found for {category} after checking all feeds")
         if category in FALLBACK_KEYWORDS:
             write_log(f"Trying fallback keywords for {category}...")
-            # Try alternative approach if no articles found
             
     write_log(f"Total articles fetched for {category}: {len(articles)}")
     return articles
@@ -488,41 +491,6 @@ def extract_article_content(url):
         except Exception as e:
             write_log(f"Could not extract content from {url}: {e}")
             return None
-#replacing this part 
-#def generate_content_aware_post(title, category, article_url, trend_term=None):
-    """Generate relevant post based on actual article content using GPT."""
-    #try:
-        #article_content = extract_article_content(article_url)
-        #content_context = f"Title: {title}\n"
-        #if article_content:
-            #content_context += f"Content: {article_content}\n"
-        #content_context += f"Category: {category}\n"
-       # if trend_term:
-            #content_context += f"Trending topic: {trend_term}\n"
-        
-        #prompt = f"""Based on this news article, create an engaging Twitter post (under 200 characters to leave room for URL and hashtags):
-
-#{content_context}
-
-#Requirements:
-#- Be specific about the actual content/news
-#- Make it engaging and conversational
-#- Don't use generic templates
-#- Focus on the key newsworthy element
-#- Use appropriate tone for {category}
-#- Include relevant emojis if appropriate
-
-#Write ONLY the tweet text, no quotes or explanations:"""
-
-        #response = openai_client.chat.completions.create(
-           # model="gpt-4o-mini",
-            #messages=[
-               #{"role": "system", "content": "You are a witty social media manager creating engaging, specific tweets about current events."},
-               # {"role": "user", "content": prompt}
-            #],
-            #max_tokens=100,
-            #temperature=0.7
-        #)
 
 def generate_content_aware_post(title, category, article_url, trend_term=None):
     """Generate viral-worthy posts that drive engagement."""
@@ -563,7 +531,7 @@ Write ONLY the tweet text, no quotes or explanations:"""
                 {"role": "user", "content": prompt}
             ],
             max_tokens=120,
-            temperature=0.8  # Higher temperature for more creative outputs
+            temperature=0.8
         )
         gpt_text = response.choices[0].message.content.strip()
         
@@ -622,9 +590,21 @@ def generate_fallback_post(title, category, trend_term=None):
         "Space Exploration": ["Space news:", "NASA update:"],
         "Tesla": ["Tesla news:", "EV update:"]
     }
+    
+    prefix = random.choice(category_prefixes.get(category, ["News:"]))
+    tweet_text = f"{prefix} {main_part}"
+    
+    if trend_term:
+        tweet_text = f"Trending {trend_term} - {tweet_text}"
+    
+    tags = CATEGORY_HASHTAGS.get(category, [])
+    if tags and len(tweet_text) < 200:
+        tweet_text += " " + tags[0]
+    
+    return validate_tweet_length(tweet_text)
 
 def generate_science_philosophy_post(title, category, article_url=None):
-    """Generate thought-provoking content for science/philosophy categories."""
+    """Generate thought-provoking content for science categories."""
     
     if category == "Science Facts":
         prompt = """Create a mind-blowing science fact that makes people go "Wait, seriously?" 
@@ -641,63 +621,32 @@ def generate_science_philosophy_post(title, category, article_url=None):
         
         Write ONLY the tweet text:"""
         
-   # elif category == "Philosophy":
-        #prompt = """Create a philosophical thought that sparks deep conversation and self-reflection.
-        
-       # Requirements:
-         # - Challenge how people think about life, reality, or existence
-        #  - Make it relatable to everyday experience
-        #  - End with a question that has no easy answer
-        #  - Avoid being preachy or pretentious
-        
-        #  Examples:
-        #  - "If you replaced every part of a ship over time, is it still the same ship? Now apply this to yourself - every cell in your body replaces itself every 7 years. Are you still you?"
-        #  - "We spend our whole lives learning how to live, then die just when we're getting good at it. What would you do differently if you had 1000 years?"
-        
-        #  Write ONLY the tweet text:"""
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You create thought-provoking content that makes people stop scrolling and start thinking."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=100,
+                temperature=0.9
+            )
+            return validate_tweet_length(response.choices[0].message.content.strip())
+        except Exception as e:
+            write_log(f"Special content generation failed: {e}")
+            return generate_fallback_science_content()
     
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You create thought-provoking content that makes people stop scrolling and start thinking."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=100,
-            temperature=0.9
-        )
-        return validate_tweet_length(response.choices[0].message.content.strip())
-    except Exception as e:
-        write_log(f"Special content generation failed: {e}")
-        return generate_fallback_philosophical_content(category)
+    # For any other category, return a generic fallback
+    return "Amazing discoveries and fascinating facts coming your way! What scientific topic interests you most?"
 
-def generate_fallback_philosophical_content(category):
-    """Fallback content for science/philosophy when GPT fails."""
-    if category == "Science Facts":
-        facts = [
-            "Did you know a single teaspoon of neutron star material weighs 6 billion tons? That's heavier than Mount Everest. What else in space defies our earthly logic?",
-            "Octopuses have three hearts and blue blood. Two hearts pump blood to the gills, one to the body. Makes human biology seem simple, doesn't it?",
-            "There are more possible chess games than atoms in the observable universe. Yet we think we can predict the future. Thoughts?"
-        ]
-     # else:  # Philosophy
-        #  thoughts = [
-           #   "If free will is an illusion, are you choosing to read this or were you always going to? Does it matter either way?",
-          #    "Every expert was once a beginner. Every pro was once an amateur. Every icon was once an unknown. What's stopping you?",
-          #    "We fear death, yet we waste life. We crave time, yet we kill time. We seek meaning, yet we avoid thinking. Why do we sabotage what we want most?"
-        #]
-    
-    return random.choice(facts if category == "Science Facts" else thoughts)
-    prefix = random.choice(category_prefixes.get(category, ["News:"]))
-    tweet_text = f"{prefix} {main_part}"
-    
-    if trend_term:
-        tweet_text = f"Trending {trend_term} - {tweet_text}"
-    
-    tags = CATEGORY_HASHTAGS.get(category, [])
-    if tags and len(tweet_text) < 200:
-        tweet_text += " " + tags[0]
-    
-    return validate_tweet_length(tweet_text)
+def generate_fallback_science_content():
+    """Fallback content for science when GPT fails."""
+    facts = [
+        "Did you know a single teaspoon of neutron star material weighs 6 billion tons? That's heavier than Mount Everest. What else in space defies our earthly logic?",
+        "Octopuses have three hearts and blue blood. Two hearts pump blood to the gills, one to the body. Makes human biology seem simple, doesn't it?",
+        "There are more possible chess games than atoms in the observable universe. Yet we think we can predict the future. Thoughts?"
+    ]
+    return random.choice(facts)
 
 # =========================
 # POST TO TWITTER
@@ -809,25 +758,22 @@ def fallback_tweet(category):
 
 def post_dynamic_update(category, trend_term=None):
     """Post update for category with content-aware generation and URL validation."""
-
-    if category in ["Science Facts", "Philosophy"]:
+    
+    if category == "Science Facts":
         if not can_post_now():
             write_log(f"Rate limited - will retry {category} on next scheduled run")
             return False
     
-    # 70% chance to use RSS feeds, 30% chance for original content
-    if random.random() < 0.7:
-        # Use RSS feeds - let the normal process handle it
-        write_log(f"Using RSS feeds for {category}")
-        # Don't return here, let it fall through to the normal RSS processing
-    else:
-        # Generate original content
-        write_log(f"Generating original content for {category}")
-        tweet_text = generate_science_philosophy_post("", category)
-        if post_tweet(tweet_text, category):
-            write_log(f"Posted original {category.lower()} content")
-            return True
-        return False
+        # 70% chance to use RSS feeds, 30% chance for original content
+        if random.random() < 0.7:
+            write_log(f"Using RSS feeds for {category}")
+        else:
+            write_log(f"Generating original content for {category}")
+            tweet_text = generate_science_philosophy_post("", category)
+            if post_tweet(tweet_text, category):
+                write_log(f"Posted original {category.lower()} content")
+                return True
+            return False
         
     articles = get_articles_for_category(category)
     fresh_articles = [a for a in articles if is_fresh(a)]
@@ -847,7 +793,7 @@ def post_dynamic_update(category, trend_term=None):
         
         valid_articles_processed += 1
         
-        # CRITICAL FIX: Check if we can post BEFORE generating content
+        # Check if we can post BEFORE generating content
         if not can_post_now():
             write_log(f"Rate limited - will retry {category} on next scheduled run")
             return False
@@ -919,37 +865,53 @@ def run_dynamic_job():
 # =========================
 # SCHEDULER
 # =========================
+
 def should_post_now():
     """Check if current time matches any scheduled time"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-    scheduled_times = ["10:30", "12:30", "14:30", "16:30", "18:30", "20:30", 
-                      "22:30", "00:30", "02:30", "04:30", "06:30", "08:30"]
-    return current_minute in scheduled_times
+    scheduled_times = ["19:30", "21:31", "23:32", "01:32", "03:33", "05:34", 
+                      "07:34", "09:35", "11:30", "13:31", "15:30", "17:31"]
     
-#def schedule_posts():
-    """Schedule posts with better timing."""
-    #times = ["23:55", "01:56", "03:58", "06:00", "07:35", "10:03","12:05", "14:07", "16:09", "18:11", "20:15", "22:20"]
-    #for t in times:
-        #schedule.every().day.at(t).do(run_dynamic_job)
-        #write_log(f"Dynamic job scheduled at {t}")
+    # Debug logging
+    write_log(f"should_post_now: current_minute={current_minute}, scheduled_times={scheduled_times}")
+    result = current_minute in scheduled_times
+    write_log(f"should_post_now returning: {result}")
+    return result
 
 def start_scheduler():
-    """Simple loop that checks every minute"""
+    """Simple loop that checks every minute with debug logging"""
     write_log("Starting manual scheduler...")
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
+    
+    # Debug: Show scheduled times
+    scheduled_times = ["19:30", "21:31", "23:32", "01:32", "03:33", "05:34", 
+                      "07:34", "09:35", "11:30", "13:31", "15:30", "17:31"]
+    write_log(f"Scheduled times: {scheduled_times}")
+    
     last_checked_minute = None
     
     while True:
-        current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-        
-        # Only check once per minute
-        if current_minute != last_checked_minute:
-            if should_post_now():
-                write_log(f"Scheduled time reached: {current_minute}")
-                run_dynamic_job()
-            last_checked_minute = current_minute
+        try:
+            current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
             
-        time.sleep(30)  # Check every 30 seconds
+            # Debug: Log every minute to verify loop is running
+            write_log(f"Scheduler heartbeat: {current_minute}")
+            
+            # Only check once per minute
+            if current_minute != last_checked_minute:
+                write_log(f"Checking if {current_minute} is in scheduled times...")
+                if should_post_now():
+                    write_log(f"Scheduled time reached: {current_minute}")
+                    run_dynamic_job()
+                else:
+                    write_log(f"Not a scheduled time: {current_minute}")
+                last_checked_minute = current_minute
+                
+            time.sleep(30)  # Check every 30 seconds
+            
+        except Exception as e:
+            write_log(f"ERROR in scheduler loop: {e}")
+            time.sleep(60)
 
 # =========================
 # TESTING & MANUAL FUNCTIONS
@@ -1042,64 +1004,6 @@ def test_single_post(category=None):
     
     return post_dynamic_update(category, trend_term)
 
-def test_url_validation(url):
-    """Test function to check URL validation."""
-    print(f"Testing URL: {url}")
-    is_valid = validate_url(url)
-    print(f"Result: {'Valid' if is_valid else 'Invalid'}")
-    return is_valid
-
-def test_full_pipeline(category="Arsenal"):
-    """Test the complete pipeline including URL validation."""
-    write_log(f"Testing full pipeline for {category}...")
-    articles = get_articles_for_category(category)
-    if not articles:
-        write_log("No articles found")
-        return
-    
-    for article in articles[:3]:
-        print(f"\nTesting: {article['title']}")
-        print(f"URL: {article['url']}")
-        if validate_url(article['url']):
-            print("URL: VALID")
-            content = extract_article_content(article['url'])
-            print(f"Content extracted: {'Yes' if content else 'No'}")
-        else:
-            print("URL: INVALID - would skip this article")
-        print("-" * 50)
-
-def test_content_extraction(url):
-    """Test function to see content extraction in action."""
-    content = extract_article_content(url)
-    print(f"Extracted content: {content}")
-    return content
-
-def test_simulation_mode():
-    """Test the bot without actually posting to Twitter."""
-    write_log("=== RUNNING IN SIMULATION MODE ===")
-    write_log("Bot will generate content but not actually post to Twitter")
-    
-    # Override the post_tweet function temporarily
-    global original_post_tweet
-    original_post_tweet = post_tweet
-    
-    def simulate_post_tweet(text, category=None):
-        write_log(f"SIMULATION: Would post to Twitter:")
-        write_log(f"Category: {category}")
-        write_log(f"Content: {text}")
-        write_log("=" * 50)
-        return True
-    
-    # Replace the function
-    globals()['post_tweet'] = simulate_post_tweet
-    
-    # Run a test
-    test_single_post("Arsenal")
-    
-    # Restore original function
-    globals()['post_tweet'] = original_post_tweet
-    write_log("=== SIMULATION MODE ENDED ===")
-
 def test_auth():
     """Test Twitter API authentication."""
     try:
@@ -1156,36 +1060,13 @@ if __name__ == "__main__":
     check_rate_limits()
     
     write_log("=== STARTING BOT SCHEDULER ===")
-
-    # Start health server in background thread for Render Web Service
     
+    # Start health server in background thread for Render Web Service
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     
     # Uncomment ONE of these for testing:
-    # test_single_post("Arsenal")
+    test_single_post("Tesla")
     # test_simulation_mode()
     
     start_scheduler()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
