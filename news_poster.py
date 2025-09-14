@@ -268,8 +268,14 @@ write_log(f"Logs directory exists: {os.path.exists('logs')}")
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b'Twitter Bot is running')
+        self.wfile.write(b'Twitter Bot is running - OK')
+    
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
     
     def log_message(self, format, *args):
         # Suppress server access logs
@@ -277,10 +283,13 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def start_health_server():
     """Start health check server for Render Web Service."""
-    port = int(os.environ.get('PORT', 8080))
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    write_log(f"Health server starting on port {port}")
-    server.serve_forever()
+    port = int(os.environ.get('PORT', 10000))
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthHandler)
+        write_log(f"Health server starting on port {port}")
+        server.serve_forever()
+    except Exception as e:
+        write_log(f"Health server failed to start: {e}")
 
 # =========================
 # UTILITY FUNCTIONS
@@ -1070,4 +1079,5 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
