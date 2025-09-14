@@ -57,60 +57,80 @@ IMAGE_FOLDER = "images"
 DAILY_POST_LIMIT = 12
 POST_INTERVAL_MINUTES = 120
 last_post_time = None
-FRESHNESS_WINDOW = timedelta(hours=24)
+FRESHNESS_WINDOW = timedelta(hours=48)
 
 # RSS feeds mapped to categories - Updated with working feeds
 RSS_FEEDS = {
     "Arsenal": [
+        "http://feeds.arsenal.com/arsenal-news",
         "http://feeds.bbci.co.uk/sport/football/teams/arsenal/rss.xml",
         "https://www.theguardian.com/football/arsenal/rss",
         "https://arseblog.com/feed/"
     ],
     "EPL": [
+        "https://www.premierleague.com/news",
+        "https://www.skysports.com/rss/12",
         "http://feeds.bbci.co.uk/sport/football/premier-league/rss.xml",
-        "https://www.theguardian.com/football/premierleague/rss",
-        "https://www.skysports.com/rss/12"
+        "https://www.theguardian.com/football/premierleague/rss"
     ],
     "F1": [
+        "https://www.formula1.com/en/latest/all.xml",
         "https://www.autosport.com/rss/f1/news/",
-        "http://feeds.bbci.co.uk/sport/formula1/rss.xml",
         "https://www.motorsport.com/rss/f1/news/"
     ],
     "MotoGP": [
+        "https://www.motogp.com/en/news/rss",
         "https://www.autosport.com/rss/motogp/news/",
-        "https://www.crash.net/rss/motogp",
-        "https://www.the-race.com/rss/motogp/"
+        "https://www.crash.net/rss/motogp"
     ],
     "World Finance": [
-        "https://www.reuters.com/arc/outboundfeeds/business/?outputType=xml",
-        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-        "https://feeds.bloomberg.com/markets/news.rss"
+        "https://www.cnbc.com/id/100727362/device/rss/rss.html",
+        "https://www.cnbc.com/id/10001147/device/rss/rss.html",
+        "https://www.cnbc.com/id/15839069/device/rss/rss.html",
+        "https://www.cnbc.com/id/19854910/device/rss/rss.html",
+        "https://www.cnbc.com/id/10000115/device/rss/rss.html",
+        "https://www.cnbc.com/id/10001054/device/rss/rss.html",
+        "https://www.bloomberg.com/africa",
+        "http://feeds.reuters.com/reuters/businessNews",
+        "http://feeds.reuters.com/reuters/companyNews",
+        "http://feeds.reuters.com/Reuters/worldNews",
+        "http://feeds.reuters.com/reuters/technologyNews",
+        "http://feeds.reuters.com/reuters/healthNews"
     ],
     "Crypto": [
+        "https://www.investopedia.com/trading-news-4689736",
         "https://cointelegraph.com/rss",
+        "https://www.investopedia.com/markets-news-4427704",
+        "https://www.investopedia.com/political-news-4689737",
         "https://www.coindesk.com/arc/outboundfeeds/rss/",
-        "https://coinjournal.net/rss/",
+        "https://www.investopedia.com/company-news-4427705",
         "https://crypto.news/feed/"
     ],
     "Cycling": [
-        "https://www.cyclingnews.com/rss/",
-        "https://www.bikeradar.com/feed/",
+        "http://feeds2.feedburner.com/cyclingnews/news",
+        "https://cycling.today/feed",
         "https://velo.outsideonline.com/feed/",
         "https://road.cc/rss"
     ],
     "Space Exploration": [
+        "https://spacenews.com/feed",
+        "https://phys.org/rss-feed/space-news/",
         "https://www.nasa.gov/rss/dyn/breaking_news.rss",
-        "https://www.space.com/feeds/all",
-        "https://spacenews.com/feed/"
-    ],
+        "https://www.space.com/feeds/all"
+     ],
     "Tesla": [
+        "https://insideevs.com/rss/articles/all",
+        "https://bloomberg.com/green",
         "https://electrek.co/feed/",
-        "https://insideevs.com/rss/news/",
-        "https://www.notateslaapp.com/feed"
+        "https://bloomberg.com/pursuits/autos",
+        "https://www.tesla.com/blog/feed",
+        "https://www.tesla.com/blog.rss"
     ],
     "Science Facts": [
+        "https://www.sciencefocus.com/feed",
+        "https://www.sciencenewstoday.org/feed",
+        "https://www.zmescience.com/feed",
         "https://www.sciencedaily.com/rss/all.xml",
-        "https://phys.org/rss-feed/",
         "https://www.scientificamerican.com/feed/"    
     ]
 }
@@ -878,8 +898,8 @@ def run_dynamic_job():
 def should_post_now():
     """Check if current time matches any scheduled time"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-    scheduled_times = ["19:30", "21:31", "23:32", "01:32", "03:33", "05:34", 
-                      "07:34", "09:35", "11:30", "13:31", "15:30", "17:31"]
+    scheduled_times = ["18:30", "20:30", "22:30", "00:30", "02:30", "03:30", 
+                      "05:30", "07:30", "09:30", "11:30", "13:30", "16:30"]
     
     # Debug logging
     write_log(f"should_post_now: current_minute={current_minute}, scheduled_times={scheduled_times}")
@@ -893,8 +913,8 @@ def start_scheduler():
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
     
     # Debug: Show scheduled times
-    scheduled_times = ["19:30", "21:31", "23:32", "01:32", "03:33", "05:34", 
-                      "07:34", "09:35", "11:30", "13:31", "15:30", "17:31"]
+    scheduled_times = ["18:30", "20:30", "22:30", "00:30", "02:30", "03:30", 
+                      "05:30", "07:30", "09:30", "11:30", "13:30", "16:30"]
     write_log(f"Scheduled times: {scheduled_times}")
     
     last_checked_minute = None
@@ -1079,5 +1099,6 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
