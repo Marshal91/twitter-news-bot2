@@ -414,6 +414,35 @@ def create_images_directory():
         os.makedirs(IMAGE_FOLDER)
         write_log(f"Created images directory: {IMAGE_FOLDER}")
 
+def shorten_url_with_fallback(long_url):
+    """Try multiple URL shortening services with fallback"""
+    
+    # Try TinyURL first (most reliable, no API key needed)
+    try:
+        api_url = f"http://tinyurl.com/api-create.php?url={long_url}"
+        response = requests.get(api_url, timeout=5)
+        if response.status_code == 200 and response.text.strip().startswith('http'):
+            short_url = response.text.strip()
+            write_log(f"URL shortened: {long_url[:50]}... -> {short_url}")
+            return short_url
+    except Exception as e:
+        write_log(f"TinyURL shortening failed: {e}")
+    
+    # Fallback to is.gd
+    try:
+        api_url = f"https://is.gd/create.php?format=simple&url={long_url}"
+        response = requests.get(api_url, timeout=5)
+        if response.status_code == 200 and response.text.strip().startswith('http'):
+            short_url = response.text.strip()
+            write_log(f"URL shortened with is.gd: {long_url[:50]}... -> {short_url}")
+            return short_url
+    except Exception as e:
+        write_log(f"is.gd shortening failed: {e}")
+    
+    # If all fail, return original URL
+    write_log("All URL shortening services failed, using original URL")
+    return long_url
+
 # =========================
 # NEWS FETCHING
 # =========================
@@ -835,7 +864,9 @@ def post_dynamic_update(category, trend_term=None):
             trend_term
         )
         
-        tweet_text = f"{post_text}\n\n{article['url']}"
+        # Shorten the URL before creating the tweet
+        short_url = shorten_url_with_fallback(article["url"])
+        tweet_text = f"{post_text}\n\n{short_url}"
         
         if post_tweet(tweet_text, category):
             log_posted(article["url"])
@@ -1099,6 +1130,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
