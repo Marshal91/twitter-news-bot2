@@ -57,21 +57,17 @@ IMAGE_FOLDER = "images"
 DAILY_POST_LIMIT = 12
 POST_INTERVAL_MINUTES = 120
 last_post_time = None
-FRESHNESS_WINDOW = timedelta(hours=48)
+FRESHNESS_WINDOW = timedelta(hours=72)
 
 # RSS feeds mapped to categories - Updated with working feeds
 RSS_FEEDS = {
-    "Arsenal": [
-        "http://feeds.arsenal.com/arsenal-news",
-        "http://feeds.bbci.co.uk/sport/football/teams/arsenal/rss.xml",
-        "https://www.theguardian.com/football/arsenal/rss",
-        "https://arseblog.com/feed/"
-    ],
     "EPL": [
+        "http://feeds.arsenal.com/arsenal-news",
         "https://www.premierleague.com/news",
         "https://www.skysports.com/rss/12",
         "http://feeds.bbci.co.uk/sport/football/premier-league/rss.xml",
-        "https://www.theguardian.com/football/premierleague/rss"
+        "https://www.theguardian.com/football/premierleague/rss",
+        "https://arseblog.com/feed/"
     ],
     "F1": [
         "https://www.formula1.com/en/latest/all.xml",
@@ -82,20 +78,6 @@ RSS_FEEDS = {
         "https://www.motogp.com/en/news/rss",
         "https://www.autosport.com/rss/motogp/news/",
         "https://www.crash.net/rss/motogp"
-    ],
-    "World Finance": [
-        "https://www.cnbc.com/id/100727362/device/rss/rss.html",
-        "https://www.cnbc.com/id/10001147/device/rss/rss.html",
-        "https://www.cnbc.com/id/15839069/device/rss/rss.html",
-        "https://www.cnbc.com/id/19854910/device/rss/rss.html",
-        "https://www.cnbc.com/id/10000115/device/rss/rss.html",
-        "https://www.cnbc.com/id/10001054/device/rss/rss.html",
-        "https://www.bloomberg.com/africa",
-        "http://feeds.reuters.com/reuters/businessNews",
-        "http://feeds.reuters.com/reuters/companyNews",
-        "http://feeds.reuters.com/Reuters/worldNews",
-        "http://feeds.reuters.com/reuters/technologyNews",
-        "http://feeds.reuters.com/reuters/healthNews"
     ],
     "Crypto": [
         "https://www.investopedia.com/trading-news-4689736",
@@ -125,37 +107,25 @@ RSS_FEEDS = {
         "https://bloomberg.com/pursuits/autos",
         "https://www.tesla.com/blog/feed",
         "https://www.tesla.com/blog.rss"
-    ],
-    "Science Facts": [
-        "https://www.sciencefocus.com/feed",
-        "https://www.sciencenewstoday.org/feed",
-        "https://www.zmescience.com/feed",
-        "https://www.sciencedaily.com/rss/all.xml",
-        "https://www.scientificamerican.com/feed/"    
     ]
 }
 
 # Hashtag pools
 CATEGORY_HASHTAGS = {
-    "Arsenal": ["#Arsenal", "#COYG", "#PremierLeague", "#Saka", "#Odegaard", "#Saliba", "#Arteta", "#Gunners", "#AFC"],
     "EPL": ["#PremierLeague", "#EPL", "#Football", "#ManCity", "#Liverpool", "#Chelsea", "#Arsenal", "#ManUtd", "#Spurs"],
     "F1": ["#F1", "#Formula1", "#Motorsport", "#Verstappen", "#Hamilton", "#Norris", "#Leclerc", "#McLaren", "#Ferrari", "#RedBull"],
     "MotoGP": ["#MotoGP", "#MotorcycleRacing", "#Bagnaia", "#Marquez", "#Quartararo", "#VR46", "#GrandPrix"],
-    "World Finance": ["#Finance", "#GlobalEconomy", "#Markets", "#Stocks", "#Investing", "#WallStreet", "#Bloomberg", "#Crypto"],
     "Crypto": ["#Cryptocurrency", "#Bitcoin", "#Ethereum", "#Blockchain", "#CryptoNews", "#DeFi", "#Web3", "#BTC"],
     "Cycling": ["#Cycling", "#TourDeFrance", "#ProCycling", "#Vingegaard", "#Pogacar", "#CyclistLife", "#RoadCycling"],
     "Space Exploration": ["#Space", "#NASA", "#SpaceX", "#Mars", "#MoonMission", "#Astronomy", "#Starlink", "#SpaceExploration"],
-    "Tesla": ["#Tesla", "#ElonMusk", "#ElectricCars", "#ModelY", "#Cybertruck", "#TeslaNews", "#EV", "#SustainableTransport"],
-    "Science Facts": ["#Science", "#DidYouKnow", "#ScienceFacts", "#Research", "#Discovery", "#STEM", "#TodayILearned"]
+    "Tesla": ["#Tesla", "#ElonMusk", "#ElectricCars", "#ModelY", "#Cybertruck", "#TeslaNews", "#EV", "#SustainableTransport"]
 }
 
 # Mapping trends to categories (disabled for now)
 TREND_KEYWORDS = {
-    "Arsenal": ["Arsenal", "Gunners", "Arteta", "Saka", "Odegaard", "Saliba", "Nwaneri", "Premier League"],
     "EPL": ["Premier League", "EPL", "Man City", "Liverpool", "Chelsea", "Arsenal", "Tottenham", "Football"],
     "F1": ["Formula 1", "F1", "Verstappen", "Norris", "Hamilton", "Leclerc", "McLaren", "Ferrari"],
     "MotoGP": ["MotoGP", "Bagnaia", "Marquez", "Quartararo", "Grand Prix", "Motorcycle Racing", "VR46"],
-    "World Finance": ["Finance", "Markets", "Economy", "Stocks", "Investing", "Wall Street", "Crypto", "Global Economy"],
     "Crypto": ["Cryptocurrency", "Bitcoin", "Ethereum", "Blockchain", "DeFi", "Web3", "NFTs", "BTC"],
     "Cycling": ["Cycling", "Tour de France", "Pogacar", "Vingegaard", "Vuelta", "Giro", "Road cycling"],
     "Space Exploration": ["Space", "NASA", "SpaceX", "Mars", "Moon Mission", "Starlink", "Astronomy"],
@@ -164,11 +134,9 @@ TREND_KEYWORDS = {
 
 # Freshness + fallback
 FALLBACK_KEYWORDS = {
-    "Arsenal": ["Arsenal FC", "Gunners", "Premier League"],
     "EPL": ["Premier League", "Football", "EPL"],
     "F1": ["Formula 1", "Grand Prix", "Motorsport"],
     "MotoGP": ["MotoGP", "Grand Prix", "Motorcycle Racing"],
-    "World Finance": ["Finance", "Markets", "Economy"],
     "Crypto": ["Cryptocurrency", "Bitcoin", "Blockchain"],
     "Cycling": ["Cycling", "Tour de France", "Road Cycling"],
     "Space Exploration": ["Space", "NASA", "SpaceX"],
@@ -176,11 +144,6 @@ FALLBACK_KEYWORDS = {
 }
 
 EVERGREEN_HOOKS = {
-    "Arsenal": [
-        "Arsenal fans know hope is the deadliest weapon. #COYG",
-        "Every Arsenal season is a Shakespeare play: tragedy, comedy, miracle.",
-        "Supporting Arsenal should come with free therapy sessions."
-    ],
     "EPL": [
         "Premier League: Where dreams are made and hearts are broken.",
         "EPL weekends hit different. Who's your team?",
@@ -195,11 +158,6 @@ EVERGREEN_HOOKS = {
         "MotoGP: Two wheels, one wild ride!",
         "Speed, skill, and spills—MotoGP has it all.",
         "Who's your pick for the next Grand Prix?"
-    ],
-    "World Finance": [
-        "Markets move, money talks. What's the next big trend?",
-        "Global finance: Where numbers tell epic stories.",
-        "From Wall Street to Main Street, the economy never sleeps."
     ],
     "Crypto": [
         "Crypto: HODL or trade, what's your vibe?",
@@ -225,11 +183,9 @@ EVERGREEN_HOOKS = {
 
 # Image categories for better matching
 IMAGE_CATEGORIES = {
-    "Arsenal": ["arsenal", "football", "soccer", "gunners"],
     "EPL": ["football", "soccer", "premier", "epl"],
     "F1": ["f1", "racing", "formula", "motorsport"],
     "MotoGP": ["motogp", "motorcycle", "racing", "grand prix"],
-    "World Finance": ["finance", "money", "business", "stocks"],
     "Crypto": ["crypto", "bitcoin", "blockchain", "ethereum"],
     "Cycling": ["cycling", "bike", "tour", "bicycle"],
     "Space Exploration": ["space", "nasa", "spacex", "astronomy"],
@@ -638,11 +594,9 @@ def generate_fallback_post(title, category, trend_term=None):
         main_part = title[:80]
     
     category_prefixes = {
-        "Arsenal": ["Arsenal news:", "Gunners update:", "Arsenal:"],
         "EPL": ["Premier League:", "EPL update:"],
         "F1": ["F1 news:", "Formula 1:"],
         "MotoGP": ["MotoGP news:", "Grand Prix update:"],
-        "World Finance": ["Markets:", "Finance:"],
         "Crypto": ["Crypto news:", "Blockchain update:"],
         "Cycling": ["Cycling news:", "Pro cycling:"],
         "Space Exploration": ["Space news:", "NASA update:"],
@@ -929,8 +883,7 @@ def run_dynamic_job():
 def should_post_now():
     """Check if current time matches any scheduled time"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-    scheduled_times = ["18:30", "20:30", "22:30", "00:30", "02:30", "03:30", 
-                      "05:30", "07:30", "09:30", "11:30", "13:30", "16:30"]
+    scheduled_times = ["18:48", "21:12", "23:36", "02:00", "04:24", "06:48", "09:12", "11:36", "14:00", "16:24"]
     
     # Debug logging
     write_log(f"should_post_now: current_minute={current_minute}, scheduled_times={scheduled_times}")
@@ -944,8 +897,8 @@ def start_scheduler():
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
     
     # Debug: Show scheduled times
-    scheduled_times = ["18:30", "20:30", "22:30", "00:30", "02:30", "03:30", 
-                      "05:30", "07:30", "09:30", "11:30", "13:30", "16:30"]
+    scheduled_times = ["18:48", "21:12", "23:36", "02:00", "04:24", "06:48", "09:12", "11:36", "14:00", "16:24"]
+    
     write_log(f"Scheduled times: {scheduled_times}")
     
     last_checked_minute = None
@@ -1130,6 +1083,7 @@ if __name__ == "__main__":
     # test_simulation_mode()
     
     start_scheduler()
+
 
 
 
