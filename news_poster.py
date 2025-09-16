@@ -1024,7 +1024,7 @@ def should_post_now():
     """Enhanced scheduling that considers premium times"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
     
-    all_scheduled_times = PREMIUM_POSTING_TIMES + REGULAR_POSTING_TIMES
+    all_scheduled_times = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
     
     write_log(f"Checking time: {current_minute} against {len(all_scheduled_times)} scheduled times")
     result = current_minute in all_scheduled_times
@@ -1072,7 +1072,7 @@ def start_enhanced_scheduler():
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
     write_log(f"Thread cooldown: {THREAD_COOLDOWN_HOURS} hours")
     
-    all_times = sorted(PREMIUM_POSTING_TIMES + REGULAR_POSTING_TIMES)
+    all_times = sorted(PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES)
     write_log(f"Scheduled times: {all_times}")
     write_log(f"Premium times: {PREMIUM_POSTING_TIMES}")
     
@@ -1221,3 +1221,4 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
+
