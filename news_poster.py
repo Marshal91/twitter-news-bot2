@@ -179,6 +179,11 @@ TRENDING_HASHTAGS = {
 
 # Premium user targeting content strategies
 PREMIUM_CONTENT_STRATEGIES = {
+    "EPL": {
+        "focus": "Business strategy, player valuations, commercial insights",
+        "tone": "Professional analysis with strategic implications",
+        "cta": "What's your take on the business side?"
+    },
     "F1": {
         "focus": "Technology innovation, team strategies, commercial partnerships",
         "tone": "Technical expertise with business applications",
