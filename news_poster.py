@@ -65,20 +65,18 @@ PREMIUM_POSTING_TIMES = [
     "16:30",  # 12:30 PM ET / 5:30 PM GMT - Lunch break
     "18:30",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
     "20:30",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
-    "22:30",  # 6:30 PM ET / 11:30 PM GMT - Night owls
-    "14:00",  # 10:00 AM ET / 3:00 PM GMT - Mid-morning business
-    "19:30",  # 3:30 PM ET / 8:30 PM GMT - After-work engagement
+    "22:40",  # 6:30 PM ET / 11:30 PM GMT - Night owls
     "21:00"   # 5:00 PM ET / 10:00 PM GMT - Evening prime time
 ]
 
 # Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
     "02:00",  # Asia/Australia morning
+    "05:00",
     "06:48",  # Europe morning
     "09:12",  # Europe business hours
     "11:36",  # Pre-lunch global
     "23:36",  # Late night Americas
-    "01:24"   # Asia evening
 ]
 
 # Categories that benefit from global timing
@@ -1031,7 +1029,7 @@ def should_post_now():
     """Enhanced scheduling that considers premium times"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
     
-    all_scheduled_times = PREMIUM_POSTING_TIMES + REGULAR_POSTING_TIMES
+    all_scheduled_times = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
     
     write_log(f"Checking time: {current_minute} against {len(all_scheduled_times)} scheduled times")
     result = current_minute in all_scheduled_times
@@ -1079,7 +1077,7 @@ def start_enhanced_scheduler():
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
     write_log(f"Thread cooldown: {THREAD_COOLDOWN_HOURS} hours")
     
-    all_times = sorted(PREMIUM_POSTING_TIMES + REGULAR_POSTING_TIMES)
+    all_times = sorted(PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES)
     write_log(f"Scheduled times: {all_times}")
     write_log(f"Premium times: {PREMIUM_POSTING_TIMES}")
     
@@ -1228,3 +1226,4 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
+
