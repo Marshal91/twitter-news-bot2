@@ -62,21 +62,21 @@ FRESHNESS_WINDOW = timedelta(hours=72)
 # Enhanced posting times - targeting premium demographics with strategic distribution
 PREMIUM_POSTING_TIMES = [
     "13:30",  # 9:30 AM ET / 2:30 PM GMT - Morning business hours
-    "16:30",  # 12:30 PM ET / 5:30 PM GMT - Lunch break
-    "18:30",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
-    "20:30",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
-    "22:40",  # 6:30 PM ET / 11:30 PM GMT - Night owls
-    "21:00"   # 5:00 PM ET / 10:00 PM GMT - Evening prime time
+    "16:00",  # 12:30 PM ET / 5:30 PM GMT - Lunch break
+    "18:00",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
+    "20:00",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
+    "21:40",  # 6:30 PM ET / 11:30 PM GMT - Night owls
+    "23:40"   # 5:00 PM ET / 10:00 PM GMT - Evening prime time
 ]
 
 # Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
-    "02:00",  # Asia/Australia morning
-    "05:00",
-    "06:48",  # Europe morning
-    "09:12",  # Europe business hours
-    "11:36",  # Pre-lunch global
-    "23:36",  # Late night Americas
+    "00:30",  # Late night Americas
+    "02:30",  # Asia/Australia morning
+    "04:30",
+    "06:30",  # Europe morning
+    "09:00",  # Europe business hours
+    "11:30",  # Pre-lunch global   
 ]
 
 # Categories that benefit from global timing
@@ -1226,4 +1226,5 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
+
 
