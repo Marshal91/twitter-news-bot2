@@ -72,6 +72,7 @@ PREMIUM_POSTING_TIMES = [
 # Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
     "02:00",  # Asia/Australia morning
+    "05:00",
     "06:48",  # Europe morning
     "09:00",  # Europe business hours
     "11:00",  # Pre-lunch global    
@@ -1217,5 +1218,6 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
+
 
 
