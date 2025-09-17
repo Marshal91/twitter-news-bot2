@@ -54,7 +54,7 @@ IMAGE_FOLDER = "images"
 # Enhanced rate limiting configuration
 DAILY_POST_LIMIT = 15  # Increased for threads
 POST_INTERVAL_MINUTES = 90  # Reduced for more frequent posting
-THREAD_COOLDOWN_HOURS = 4  # Minimum time between threads
+THREAD_COOLDOWN_HOURS = 2  # Reduced cooldown - allows more threads per day
 last_post_time = None
 last_thread_time = None
 FRESHNESS_WINDOW = timedelta(hours=72)
@@ -62,20 +62,23 @@ FRESHNESS_WINDOW = timedelta(hours=72)
 # Enhanced posting times - targeting premium demographics with strategic distribution
 PREMIUM_POSTING_TIMES = [
     "13:30",  # 9:30 AM ET / 2:30 PM GMT - Morning business hours
-    "15:30",  # 12:30 PM ET / 5:30 PM GMT - Lunch break
-    "17:30",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
-    "19:30",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
-    "21:30",  # 6:30 PM ET / 11:30 PM GMT - Night owls
-    "23:30",  # 3:30 PM ET / 8:30 PM GMT - After-work engagement    
+    "16:30",  # 12:30 PM ET / 5:30 PM GMT - Lunch break
+    "18:30",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
+    "20:30",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
+    "22:30",  # 6:30 PM ET / 11:30 PM GMT - Night owls
+    "14:00",  # 10:00 AM ET / 3:00 PM GMT - Mid-morning business
+    "19:30",  # 3:30 PM ET / 8:30 PM GMT - After-work engagement
+    "21:00"   # 5:00 PM ET / 10:00 PM GMT - Evening prime time
 ]
 
 # Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
     "02:00",  # Asia/Australia morning
-    "05:00",
     "06:48",  # Europe morning
-    "09:00",  # Europe business hours
-    "11:00",  # Pre-lunch global    
+    "09:12",  # Europe business hours
+    "11:36",  # Pre-lunch global
+    "23:36",  # Late night Americas
+    "01:24"   # Asia evening
 ]
 
 # Categories that benefit from global timing
@@ -201,7 +204,10 @@ PREMIUM_CONTENT_STRATEGIES = {
 # Thread trigger keywords - when to create threads vs single tweets
 THREAD_WORTHY_KEYWORDS = [
     "breaking", "major", "significant", "analysis", "report", "study", 
-    "investigation", "exclusive", "controversial", "shocking", "unprecedented"
+    "investigation", "exclusive", "controversial", "shocking", "unprecedented",
+    "announces", "reveals", "confirms", "developing", "update", "changes",
+    "launch", "partnership", "acquisition", "merger", "investment", "funding",
+    "regulation", "ban", "approval", "strategy", "expansion", "breakthrough"
 ]
 
 # GPT Client
@@ -266,13 +272,16 @@ def should_create_thread(title, content=""):
     
     total_score = keyword_score + complexity_score
     
-    # 30% chance for threads on high-score content
+    # Increased thread probability - more aggressive threading
     if total_score >= 3:
-        return random.random() < 0.3
+        return random.random() < 0.7  # 70% chance for high-score content
     elif total_score >= 2:
-        return random.random() < 0.15
+        return random.random() < 0.4  # 40% chance for medium-score content
+    elif total_score >= 1:
+        return random.random() < 0.2  # 20% chance for low-score content
     
-    return False
+    # Base 10% chance for any content during premium times
+    return random.random() < 0.1
 
 def can_post_thread():
     """Check if enough time has passed since last thread"""
@@ -572,9 +581,10 @@ def choose_content_format(title, category, article_content="", article_url=None)
     # Check if threads are allowed
     thread_eligible = can_post_thread() and should_create_thread(title, article_content)
     
-    # Check if it's premium time (more likely to do threads for professionals)
+    # Check if it's premium time (much more likely to do threads for professionals)
     if is_premium_posting_time():
-        thread_eligible = thread_eligible or (random.random() < 0.25)  # 25% chance during premium hours
+        thread_eligible = thread_eligible or (random.random() < 0.5)  # 50% chance during premium hours
+        write_log(f"Premium time detected - thread eligible: {thread_eligible}")
     
     # 10% chance for polls on any content
     poll_chance = random.random() < 0.1
@@ -1021,7 +1031,7 @@ def should_post_now():
     """Enhanced scheduling that considers premium times"""
     current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
     
-    all_scheduled_times = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
+    all_scheduled_times = PREMIUM_POSTING_TIMES + REGULAR_POSTING_TIMES
     
     write_log(f"Checking time: {current_minute} against {len(all_scheduled_times)} scheduled times")
     result = current_minute in all_scheduled_times
@@ -1069,7 +1079,7 @@ def start_enhanced_scheduler():
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
     write_log(f"Thread cooldown: {THREAD_COOLDOWN_HOURS} hours")
     
-    all_times = sorted(PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES)
+    all_times = sorted(PREMIUM_POSTING_TIMES + REGULAR_POSTING_TIMES)
     write_log(f"Scheduled times: {all_times}")
     write_log(f"Premium times: {PREMIUM_POSTING_TIMES}")
     
@@ -1218,6 +1228,3 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
-
-
-
