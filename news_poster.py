@@ -253,7 +253,6 @@ def write_log(message, level="info"):
 # =========================
 
 def should_create_thread(title, content=""):
-    return False
     """Determine if content warrants a thread based on keywords and complexity"""
     text_to_analyze = (title + " " + content).lower()
     
@@ -1227,6 +1226,7 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
+
 
 
 
