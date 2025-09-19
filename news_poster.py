@@ -63,8 +63,8 @@ FRESHNESS_WINDOW = timedelta(hours=72)
 PREMIUM_POSTING_TIMES = [
     "13:30",  # 9:30 AM ET / 2:30 PM GMT - Morning business hours
     "16:00",  # 12:30 PM ET / 5:30 PM GMT - Lunch break
-    "18:30",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
-    "20:05",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
+    "18:00",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
+    "20:00",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
     "21:40",  # 6:30 PM ET / 11:30 PM GMT - Night owls
     "23:40"   # 5:00 PM ET / 10:00 PM GMT - Evening prime time
 ]
@@ -1226,6 +1226,7 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
+
 
 
 
