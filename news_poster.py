@@ -1,6 +1,6 @@
 """
-Enhanced news_poster.py
-Threading functionality commented out to resolve posting issues.
+Complete Enhanced Twitter Bot with Ultra-Conservative Reply System
+API Limits: 100 reads/month (3/day), 500 writes/month (12 posts + 3 replies/day)
 """
 
 import os
@@ -10,6 +10,7 @@ import feedparser
 import tweepy
 import time
 import hashlib
+import json
 from datetime import datetime, timedelta
 import pytz
 from newspaper import Article, Config
@@ -32,6 +33,95 @@ except Exception as e:
     print(f"INFO: Could not load .env file: {e}")
 
 # =========================
+# API QUOTA MANAGEMENT
+# =========================
+
+class APIQuotaManager:
+    def __init__(self):
+        self.quota_file = "api_quota.json"
+        self.load_quota()
+    
+    def load_quota(self):
+        """Load current month's quota usage"""
+        try:
+            if os.path.exists(self.quota_file):
+                with open(self.quota_file, 'r') as f:
+                    data = json.load(f)
+                
+                # Check if we're in a new month
+                current_month = datetime.now(pytz.UTC).strftime("%Y-%m")
+                if data.get("month") != current_month:
+                    # Reset for new month
+                    self.quota = {
+                        "month": current_month,
+                        "reads_used": 0,
+                        "writes_used": 0,
+                        "last_reset": datetime.now(pytz.UTC).isoformat()
+                    }
+                    self.save_quota()
+                else:
+                    self.quota = data
+            else:
+                # Initialize quota file
+                self.quota = {
+                    "month": datetime.now(pytz.UTC).strftime("%Y-%m"),
+                    "reads_used": 0,
+                    "writes_used": 0,
+                    "last_reset": datetime.now(pytz.UTC).isoformat()
+                }
+                self.save_quota()
+        except Exception as e:
+            logging.error(f"Error loading quota: {e}")
+            self.quota = {
+                "month": datetime.now(pytz.UTC).strftime("%Y-%m"),
+                "reads_used": 0,
+                "writes_used": 0,
+                "last_reset": datetime.now(pytz.UTC).isoformat()
+            }
+    
+    def save_quota(self):
+        """Save quota to file"""
+        try:
+            with open(self.quota_file, 'w') as f:
+                json.dump(self.quota, f, indent=2)
+        except Exception as e:
+            logging.error(f"Error saving quota: {e}")
+    
+    def can_read(self, count=1):
+        """Check if we can make read requests (100/month = ~3/day)"""
+        return (self.quota["reads_used"] + count) <= 100
+    
+    def can_write(self, count=1):
+        """Check if we can make write requests (500/month)"""
+        return (self.quota["writes_used"] + count) <= 500
+    
+    def use_read(self, count=1):
+        """Record read API usage"""
+        if self.can_read(count):
+            self.quota["reads_used"] += count
+            self.save_quota()
+            return True
+        return False
+    
+    def use_write(self, count=1):
+        """Record write API usage"""
+        if self.can_write(count):
+            self.quota["writes_used"] += count
+            self.save_quota()
+            return True
+        return False
+    
+    def get_quota_status(self):
+        """Get current quota status"""
+        return {
+            "reads_remaining": 100 - self.quota["reads_used"],
+            "writes_remaining": 500 - self.quota["writes_used"],
+            "reads_used": self.quota["reads_used"],
+            "writes_used": self.quota["writes_used"],
+            "month": self.quota["month"]
+        }
+
+# =========================
 # CONFIGURATION (Enhanced)
 # =========================
 
@@ -42,42 +132,50 @@ TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
+# Initialize API Quota Manager
+quota_manager = APIQuotaManager()
+
 # Log files
 LOG_FILE = "bot_log.txt"
 POSTED_LOG = "posted_links.txt"
 CONTENT_HASH_LOG = "posted_content_hashes.txt"
-THREAD_PERFORMANCE_LOG = "thread_performance.txt"
-
-# Image folder
-IMAGE_FOLDER = "images"
 
 # Enhanced rate limiting configuration
-DAILY_POST_LIMIT = 15  # Increased for threads
-POST_INTERVAL_MINUTES = 90  # Reduced for more frequent posting
-THREAD_COOLDOWN_HOURS = 2  # Reduced cooldown - allows more threads per day
+DAILY_POST_LIMIT = 12  # Main content posts per day
+POST_INTERVAL_MINUTES = 120  # 2 hours between posts
 last_post_time = None
-last_thread_time = None
 FRESHNESS_WINDOW = timedelta(hours=72)
 
-# Enhanced posting times - targeting premium demographics with strategic distribution
+# Ultra-conservative reply limits
+DAILY_REPLY_LIMIT = 3  # Only 3 replies per day to save writes
+DAILY_READ_LIMIT = 3   # Only 3 reads per day for reply research
+
+# Premium posting times - targeting business professionals and decision-makers
 PREMIUM_POSTING_TIMES = [
-    "16:00",  # 12:30 PM ET / 5:30 PM GMT - Lunch break
-    "18:00",  # 2:30 PM ET / 7:30 PM GMT - Afternoon peak
-    "20:00",  # 4:30 PM ET / 9:30 PM GMT - Evening engagement
-    "21:40",  # 6:30 PM ET / 11:30 PM GMT - Night owls
-    "23:40"   # 5:00 PM ET / 10:00 PM GMT - Evening prime time
+    "09:00",  # Morning business hours
+    "13:30",  # Lunch break business crowd
+    "16:00",  # Afternoon peak
+    "18:00",  # Evening engagement
+    "20:00",  # Prime evening time
+    "21:40",  # Night professionals
 ]
 
 # Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
-    "00:30",  # Late night Americas
     "02:30",  # Asia/Australia morning
-    "04:30",
     "06:30",  # Europe morning
-    "08:10",  # Europe business hours
-    "09:50",  # Pre-lunch global 
-    "11:30",  # Pre-lunch global 
-    "13:30"  # 9:30 AM ET / 2:30 PM GMT - Morning business hours
+    "11:30",  # Pre-lunch global
+    "23:40",  # Late night Americas
+]
+
+# All main posting times combined
+MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
+
+# Reply campaign times (only 3 times per day)
+REPLY_CAMPAIGN_TIMES = [
+    "10:30",  # Mid-morning
+    "16:30",  # Mid-afternoon  
+    "22:30",  # Late evening
 ]
 
 # Categories that benefit from global timing
@@ -86,7 +184,7 @@ GLOBAL_CATEGORIES = ["EPL", "F1", "MotoGP", "Cycling"]
 # Categories that should focus on business hours
 BUSINESS_CATEGORIES = ["Crypto", "Tesla", "Space Exploration"]
 
-# RSS feeds mapped to categories (same as original)
+# RSS feeds mapped to categories
 RSS_FEEDS = {
     "EPL": [
         "http://feeds.arsenal.com/arsenal-news",
@@ -107,73 +205,24 @@ RSS_FEEDS = {
         "https://www.crash.net/rss/motogp"
     ],
     "Crypto": [
-        "https://www.investopedia.com/trading-news-4689736",
         "https://cointelegraph.com/rss",
-        "https://www.investopedia.com/markets-news-4427704",
-        "https://www.investopedia.com/political-news-4689737",
         "https://www.coindesk.com/arc/outboundfeeds/rss/",
-        "https://www.investopedia.com/company-news-4427705",
         "https://crypto.news/feed/"
     ],
     "Cycling": [
         "http://feeds2.feedburner.com/cyclingnews/news",
         "https://cycling.today/feed",
-        "https://velo.outsideonline.com/feed/",
-        "https://road.cc/rss"
+        "https://velo.outsideonline.com/feed/"
     ],
     "Space Exploration": [
         "https://spacenews.com/feed",
         "https://phys.org/rss-feed/space-news/",
-        "https://www.nasa.gov/rss/dyn/breaking_news.rss",
         "https://www.space.com/feeds/all"
     ],
     "Tesla": [
         "https://insideevs.com/rss/articles/all",
-        "https://bloomberg.com/green",
-        "https://electrek.co/feed/",
-        "https://bloomberg.com/pursuits/autos",
-        "https://www.tesla.com/blog/feed",
-        "https://www.tesla.com/blog.rss"
+        "https://electrek.co/feed/"
     ]
-}
-
-# Enhanced hashtag pools for growth acceleration
-TRENDING_HASHTAGS = {
-    "EPL": {
-        "primary": ["#PremierLeague", "#EPL", "#Football", "#COYG"],
-        "secondary": ["#ManCity", "#Liverpool", "#Chelsea", "#Arsenal", "#ManUtd", "#Spurs"],
-        "trending": ["#MatchDay", "#PL", "#FootballTwitter", "#Soccer"]
-    },
-    "F1": {
-        "primary": ["#F1", "#Formula1", "#GrandPrix"],
-        "secondary": ["#Verstappen", "#Hamilton", "#Norris", "#Leclerc"],
-        "trending": ["#F1News", "#Motorsport", "#Racing", "#F1Tech"]
-    },
-    "MotoGP": {
-        "primary": ["#MotoGP", "#MotorcycleRacing"],
-        "secondary": ["#Bagnaia", "#Marquez", "#Quartararo", "#VR46"],
-        "trending": ["#GrandPrix", "#MotoGPNews", "#Racing"]
-    },
-    "Crypto": {
-        "primary": ["#Cryptocurrency", "#Bitcoin", "#Blockchain"],
-        "secondary": ["#Ethereum", "#DeFi", "#Web3", "#BTC"],
-        "trending": ["#CryptoNews", "#Investing", "#FinTech", "#Digital"]
-    },
-    "Cycling": {
-        "primary": ["#Cycling", "#TourDeFrance", "#ProCycling"],
-        "secondary": ["#Vingegaard", "#Pogacar", "#CyclistLife"],
-        "trending": ["#RoadCycling", "#BikeRacing", "#Cycling2025"]
-    },
-    "Space Exploration": {
-        "primary": ["#Space", "#NASA", "#SpaceX"],
-        "secondary": ["#Mars", "#MoonMission", "#Astronomy"],
-        "trending": ["#SpaceExploration", "#Starlink", "#SpaceTech"]
-    },
-    "Tesla": {
-        "primary": ["#Tesla", "#ElonMusk", "#ElectricCars"],
-        "secondary": ["#ModelY", "#Cybertruck", "#TeslaNews"],
-        "trending": ["#EV", "#SustainableTransport", "#CleanEnergy"]
-    }
 }
 
 # Premium user targeting content strategies
@@ -197,17 +246,60 @@ PREMIUM_CONTENT_STRATEGIES = {
         "focus": "Innovation leadership, market disruption, investment thesis",
         "tone": "Strategic business analysis and market positioning",
         "cta": "How does this reshape the EV landscape?"
+    },
+    "Space Exploration": {
+        "focus": "Commercial space economy, technology transfer, investment opportunities",
+        "tone": "Strategic business and technology analysis",
+        "cta": "What are the commercial implications?"
+    },
+    "Cycling": {
+        "focus": "Sports business, technology innovation, market trends",
+        "tone": "Industry analysis and business perspective",
+        "cta": "How does this change the sport's business model?"
+    },
+    "MotoGP": {
+        "focus": "Technology transfer, commercial partnerships, market impact",
+        "tone": "Technical and business analysis",
+        "cta": "What's the broader industry impact?"
     }
 }
-
-# Thread trigger keywords - when to create threads vs single tweets
-THREAD_WORTHY_KEYWORDS = [
-    "breaking", "major", "significant", "analysis", "report", "study", 
-    "investigation", "exclusive", "controversial", "shocking", "unprecedented",
-    "announces", "reveals", "confirms", "developing", "update", "changes",
-    "launch", "partnership", "acquisition", "merger", "investment", "funding",
-    "regulation", "ban", "approval", "strategy", "expansion", "breakthrough"
-]
+TRENDING_HASHTAGS = {
+    "EPL": {
+        "primary": ["#PremierLeague", "#EPL", "#Football"],
+        "secondary": ["#Arsenal", "#ManCity", "#Liverpool", "#Chelsea"],
+        "trending": ["#MatchDay", "#FootballTwitter"]
+    },
+    "F1": {
+        "primary": ["#F1", "#Formula1"],
+        "secondary": ["#Verstappen", "#Hamilton", "#Ferrari"],
+        "trending": ["#F1News", "#Racing"]
+    },
+    "Crypto": {
+        "primary": ["#Bitcoin", "#Cryptocurrency"],
+        "secondary": ["#Ethereum", "#DeFi", "#BTC"],
+        "trending": ["#CryptoNews", "#Blockchain"]
+    },
+    "Tesla": {
+        "primary": ["#Tesla", "#ElectricCars"],
+        "secondary": ["#ElonMusk", "#EV"],
+        "trending": ["#CleanEnergy", "#Innovation"]
+    },
+    "Space Exploration": {
+        "primary": ["#Space", "#SpaceX"],
+        "secondary": ["#NASA", "#Mars"],
+        "trending": ["#SpaceExploration"]
+    },
+    "Cycling": {
+        "primary": ["#Cycling", "#ProCycling"],
+        "secondary": ["#TourDeFrance", "#BikeRacing"],
+        "trending": ["#CyclingLife"]
+    },
+    "MotoGP": {
+        "primary": ["#MotoGP", "#MotorcycleRacing"],
+        "secondary": ["#GrandPrix", "#Racing"],
+        "trending": ["#MotoGPNews"]
+    }
+}
 
 # GPT Client
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
@@ -250,193 +342,352 @@ def write_log(message, level="info"):
         logging.info(message)
 
 # =========================
-# THREAD CREATION SYSTEM (COMMENTED OUT)
+# REPLY SYSTEM COMPONENTS
 # =========================
 
-def should_create_thread(title, content=""):
-    """DISABLED: Determine if content warrants a thread based on keywords and complexity"""
-    return False  # Always return False to disable threading
+class TweetRetriever:
+    def __init__(self):
+        self.replied_tweets_file = "replied_tweets.txt"
+        
+    def load_replied_tweets(self):
+        """Load list of already replied tweet IDs"""
+        if os.path.exists(self.replied_tweets_file):
+            with open(self.replied_tweets_file, 'r') as f:
+                return set(line.strip() for line in f.readlines())
+        return set()
     
-    # Original logic commented out
-    # text_to_analyze = (title + " " + content).lower()
-    # 
-    # # Check for thread-worthy keywords
-    # keyword_score = sum(1 for keyword in THREAD_WORTHY_KEYWORDS if keyword in text_to_analyze)
-    # 
-    # # Check content length and complexity
-    # complexity_score = 0
-    # if len(text_to_analyze) > 200:
-    #     complexity_score += 1
-    # if ":" in title and len(title.split(":")) > 1:
-    #     complexity_score += 1
-    # if any(word in text_to_analyze for word in ["because", "however", "therefore", "analysis"]):
-    #     complexity_score += 1
-    # 
-    # total_score = keyword_score + complexity_score
-    # 
-    # # Increased thread probability - more aggressive threading
-    # if total_score >= 3:
-    #     return random.random() < 0.7  # 70% chance for high-score content
-    # elif total_score >= 2:
-    #     return random.random() < 0.4  # 40% chance for medium-score content
-    # elif total_score >= 1:
-    #     return random.random() < 0.2  # 20% chance for low-score content
-    # 
-    # # Base 10% chance for any content during premium times
-    # return random.random() < 0.1
-
-def can_post_thread():
-    """DISABLED: Check if enough time has passed since last thread"""
-    return False  # Always return False to disable threading
+    def save_replied_tweet(self, tweet_id):
+        """Save tweet ID to avoid duplicate replies"""
+        with open(self.replied_tweets_file, 'a') as f:
+            f.write(f"{tweet_id}\n")
     
-    # Original logic commented out
-    # global last_thread_time
-    # if last_thread_time is None:
-    #     return True
-    # time_since_last = datetime.now(pytz.UTC) - last_thread_time
-    # return time_since_last.total_seconds() >= (THREAD_COOLDOWN_HOURS * 3600)
-
-# def create_thread_content(title, category, article_content="", trend_term=None):
-#     """DISABLED: Generate multi-part thread content for higher engagement"""
-#     write_log("Thread creation is disabled")
-#     return None
+    def get_mentions(self, max_results=3):
+        """Get recent mentions (ultra-conservative)"""
+        if not quota_manager.can_read(1):
+            write_log("Read quota exhausted - cannot get mentions")
+            return []
+        
+        try:
+            me = twitter_client.get_me()
+            response = twitter_client.get_users_mentions(
+                id=me.data.id,
+                max_results=max_results,
+                tweet_fields=['author_id', 'created_at', 'public_metrics']
+            )
+            
+            quota_manager.use_read(1)
+            write_log(f"Retrieved {len(response.data) if response.data else 0} mentions")
+            
+            return response.data if response.data else []
+            
+        except Exception as e:
+            write_log(f"Error getting mentions: {e}")
+            return []
     
-    # Original function commented out
-    # # Get premium strategy if applicable
-    # premium_strategy = PREMIUM_CONTENT_STRATEGIES.get(category, {})
-    # focus_area = premium_strategy.get("focus", "key insights and implications")
-    # cta = premium_strategy.get("cta", "What's your take on this?")
-    # 
-    # context = f"""
-    # Title: {title}
-    # Category: {category}
-    # Content: {article_content[:300] if article_content else ""}
-    # Focus on: {focus_area}
-    # """
-    # 
-    # thread_prompts = [
-    #     f"""Create a compelling Twitter thread opener about: {title}
-    #     
-    #     Requirements:
-    #     - Hook that creates curiosity gap
-    #     - Under 250 characters
-    #     - End with 🧵 or "Thread:"
-    #     - Make people want to read more
-    #     - Focus on: {focus_area}
-    #     
-    #     Write only the tweet text:""",
-    #     
-    #     f"""Create Part 2 of the thread about: {title}
-    #     
-    #     Requirements:
-    #     - Start with "2/"
-    #     - Provide the main insight or surprising angle
-    #     - Under 250 characters
-    #     - Focus on: {focus_area}
-    #     - Bridge to the conclusion
-    #     
-    #     Write only the tweet text:""",
-    #     
-    #     f"""Create Part 3 (final) of the thread about: {title}
-    #     
-    #     Requirements:
-    #     - Start with "3/"
-    #     - Provide conclusion and implications
-    #     - End with engaging question: {cta}
-    #     - Under 250 characters
-    #     - Encourage replies and engagement
-    #     
-    #     Write only the tweet text:"""
-    # ]
-    # 
-    # thread_parts = []
-    # for i, prompt in enumerate(thread_prompts):
-    #     try:
-    #         response = openai_client.chat.completions.create(
-    #             model="gpt-4o-mini",
-    #             messages=[
-    #                 {"role": "system", "content": "You create viral Twitter threads that drive engagement from business professionals and decision-makers."},
-    #                 {"role": "user", "content": prompt}
-    #             ],
-    #             max_tokens=100,
-    #             temperature=0.8
-    #         )
-    #         thread_parts.append(response.choices[0].message.content.strip())
-    #         time.sleep(1)  # Avoid rate limits on OpenAI
-    #     except Exception as e:
-    #         write_log(f"Thread part {i+1} generation failed: {e}")
-    #         return None
-    # 
-    # return thread_parts
+    def search_relevant_tweets(self, keywords, max_results=3):
+        """Search for tweets (ultra-conservative)"""
+        if not quota_manager.can_read(1):
+            write_log("Read quota exhausted - cannot search tweets")
+            return []
+        
+        try:
+            query = " OR ".join([f'"{keyword}"' for keyword in keywords[:2]])  # Max 2 keywords
+            query += " -is:retweet -is:reply lang:en"
+            
+            response = twitter_client.search_recent_tweets(
+                query=query,
+                max_results=max_results,
+                tweet_fields=['author_id', 'created_at', 'public_metrics']
+            )
+            
+            quota_manager.use_read(1)
+            write_log(f"Retrieved {len(response.data) if response.data else 0} tweets for keywords")
+            
+            return response.data if response.data else []
+            
+        except Exception as e:
+            write_log(f"Error searching tweets: {e}")
+            return []
 
-# def post_thread_with_recovery(thread_parts, category, article_url=None):
-#     """DISABLED: Enhanced thread posting with failure recovery and analytics"""
-#     write_log("Thread posting is disabled")
-#     return False
+class ReplyGenerator:
+    def __init__(self):
+        self.reply_strategies = {
+            "EPL": {
+                "keywords": ["premier league", "arsenal", "football", "epl"],
+                "tone": "knowledgeable football fan"
+            },
+            "F1": {
+                "keywords": ["formula1", "f1", "racing"],
+                "tone": "racing enthusiast"
+            },
+            "Crypto": {
+                "keywords": ["bitcoin", "crypto", "blockchain"],
+                "tone": "crypto analyst"
+            },
+            "Tesla": {
+                "keywords": ["tesla", "electric car", "ev"],
+                "tone": "tech enthusiast"
+            },
+            "Space": {
+                "keywords": ["spacex", "nasa", "space"],
+                "tone": "space tech fan"
+            }
+        }
     
-    # Original function commented out
-    # global last_thread_time
-    # 
-    # if not thread_parts or len(thread_parts) < 2:
-    #     write_log("Invalid thread parts provided")
-    #     return False
-    # 
-    # posted_tweets = []
-    # thread_id = None
-    # 
-    # try:
-    #     # Post first tweet with optimized hashtags
-    #     first_tweet_text = optimize_hashtags_for_reach(thread_parts[0], category)
-    #     if article_url:
-    #         short_url = shorten_url_with_fallback(article_url)
-    #         first_tweet_text += f"\n\n{short_url}"
-    #     
-    #     first_tweet = twitter_client.create_tweet(text=first_tweet_text)
-    #     thread_id = first_tweet.data['id']
-    #     posted_tweets.append(first_tweet.data)
-    #     write_log(f"Posted thread starter: {thread_id}")
-    #     
-    #     # Post replies with exponential backoff
-    #     for i, part in enumerate(thread_parts[1:], 1):
-    #         wait_time = min(30 * (1.5 ** i), 120)  # Progressive delay, cap at 15s
-    #         time.sleep(wait_time)
-    #         
-    #         optimized_part = optimize_hashtags_for_reach(part, category)
-    #         
-    #         reply = twitter_client.create_tweet(
-    #             text=optimized_part,
-    #             in_reply_to_tweet_id=posted_tweets[-1]['id']
-    #         )
-    #         posted_tweets.append(reply.data)
-    #         write_log(f"Posted thread part {i+1}")
-    #     
-    #     # Log thread performance for analytics
-    #     log_thread_performance(thread_id, category, len(thread_parts))
-    #     last_thread_time = datetime.now(pytz.UTC)
-    #     
-    #     write_log(f"Thread posted successfully: {len(posted_tweets)} parts")
-    #     return True
-    #     
-    # except Exception as e:
-    #     write_log(f"Thread posting failed at part {len(posted_tweets)+1}: {e}")
-    #     
-    #     # If we have partial thread, log for manual review
-    #     if posted_tweets:
-    #         write_log(f"Partial thread posted - first tweet ID: {thread_id}")
-    #         
-    #     return len(posted_tweets) > 0
+    def categorize_tweet(self, tweet_text):
+        """Determine the category of a tweet"""
+        tweet_lower = tweet_text.lower()
+        
+        for category, data in self.reply_strategies.items():
+            if any(keyword in tweet_lower for keyword in data["keywords"]):
+                return category
+        
+        return "General"
+    
+    def should_reply_to_tweet(self, tweet):
+        """Ultra-selective reply criteria"""
+        if not tweet.public_metrics:
+            return False
+            
+        likes = tweet.public_metrics.get('like_count', 0)
+        retweets = tweet.public_metrics.get('retweet_count', 0)
+        
+        # Very selective engagement threshold
+        if likes + retweets < 5 or likes + retweets > 500:
+            return False
+        
+        # Only recent tweets
+        if tweet.created_at:
+            tweet_age = datetime.now(pytz.UTC) - tweet.created_at.replace(tzinfo=pytz.UTC)
+            if tweet_age > timedelta(hours=12):
+                return False
+        
+        return True
+    
+    def generate_reply(self, tweet_text, category):
+        """Generate a thoughtful reply"""
+        strategy = self.reply_strategies.get(category, {"tone": "helpful"})
+        
+        prompt = f"""Reply to: "{tweet_text}"
 
-def log_thread_performance(thread_id, category, parts_count):
-    """Log thread performance for analytics"""
-    with open(THREAD_PERFORMANCE_LOG, "a") as f:
-        timestamp = datetime.now(pytz.UTC).isoformat()
-        f.write(f"{timestamp},{thread_id},{category},{parts_count}\n")
+Create a {strategy.get('tone')} reply that:
+- Adds genuine value to the conversation
+- Shows knowledge without being pushy
+- Asks a thoughtful question OR provides insight
+- Is under 240 characters
+- Feels natural and conversational
+
+Write ONLY the reply text:"""
+        
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Create engaging, valuable Twitter replies."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=80,
+                temperature=0.7
+            )
+            
+            reply = response.choices[0].message.content.strip()
+            if reply.startswith('"') and reply.endswith('"'):
+                reply = reply[1:-1]
+            
+            return reply
+            
+        except Exception as e:
+            write_log(f"Error generating reply: {e}")
+            return None
+
+class ReplyOrchestrator:
+    def __init__(self):
+        self.retriever = TweetRetriever()
+        self.generator = ReplyGenerator()
+        self.daily_replies_file = "daily_replies.json"
+        self.daily_reads_file = "daily_reads.json"
+        
+    def load_daily_count(self, file_name, limit_type):
+        """Load today's count for replies or reads"""
+        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
+        
+        if os.path.exists(file_name):
+            with open(file_name, 'r') as f:
+                data = json.load(f)
+                if data.get("date") == today:
+                    return data.get("count", 0)
+        
+        self.save_daily_count(file_name, 0)
+        return 0
+    
+    def save_daily_count(self, file_name, count):
+        """Save today's count"""
+        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
+        data = {"date": today, "count": count}
+        
+        with open(file_name, 'w') as f:
+            json.dump(data, f)
+    
+    def can_reply_today(self):
+        """Check daily limits"""
+        daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
+        daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
+        
+        return (daily_replies < DAILY_REPLY_LIMIT and 
+                daily_reads < DAILY_READ_LIMIT and 
+                quota_manager.can_write(1) and 
+                quota_manager.can_read(1))
+    
+    def execute_ultra_conservative_reply_campaign(self):
+        """Ultra-conservative reply strategy - max 3 reads, 3 replies per day"""
+        if not self.can_reply_today():
+            write_log("Daily limits reached (3 reads/3 replies) or quota exhausted")
+            return
+        
+        replied_tweets = self.retriever.load_replied_tweets()
+        daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
+        daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
+        
+        # Strategy: Only check mentions (highest ROI)
+        if daily_reads < DAILY_READ_LIMIT and daily_replies < DAILY_REPLY_LIMIT:
+            mentions = self.retriever.get_mentions(max_results=2)
+            if mentions:  # Only count as read if we got results
+                daily_reads += 1
+                self.save_daily_count(self.daily_reads_file, daily_reads)
+            
+            for tweet in mentions:
+                if (tweet.id not in replied_tweets and 
+                    daily_replies < DAILY_REPLY_LIMIT and
+                    self.generator.should_reply_to_tweet(tweet)):
+                    
+                    if self.reply_to_tweet(tweet):
+                        daily_replies += 1
+                        self.save_daily_count(self.daily_replies_file, daily_replies)
+                        replied_tweets.add(tweet.id)
+                        self.retriever.save_replied_tweet(tweet.id)
+                        break  # Only one reply per campaign
+        
+        write_log(f"Reply campaign completed. Daily usage: {daily_replies}/3 replies, {daily_reads}/3 reads")
+    
+    def reply_to_tweet(self, tweet):
+        """Reply to a specific tweet"""
+        try:
+            category = self.generator.categorize_tweet(tweet.text)
+            reply_text = self.generator.generate_reply(tweet.text, category)
+            
+            if not reply_text or not quota_manager.can_write(1):
+                return False
+            
+            response = twitter_client.create_tweet(
+                text=reply_text,
+                in_reply_to_tweet_id=tweet.id
+            )
+            
+            quota_manager.use_write(1)
+            write_log(f"Successfully replied to tweet {tweet.id}: {reply_text[:50]}...")
+            return True
+            
+        except Exception as e:
+            write_log(f"Error replying to tweet {tweet.id}: {e}")
+            return False
 
 # =========================
-# PREMIUM USER TARGETING
+# MAIN CONTENT POSTING (From Original)
 # =========================
 
-def generate_premium_targeted_content(title, category, article_url, article_content=""):
+def validate_env_vars():
+    """Validate required environment variables."""
+    required_vars = ["OPENAI_API_KEY", "TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        write_log(f"Missing environment variables: {', '.join(missing)}", level="error")
+        raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
+
+def get_trending_hashtags(category):
+    """Get optimized hashtags for better reach"""
+    hashtag_data = TRENDING_HASHTAGS.get(category)
+    if not hashtag_data:
+        return []
+    
+    selected = random.sample(hashtag_data["primary"], 1)
+    
+    if len(hashtag_data["secondary"]) >= 1:
+        selected.extend(random.sample(hashtag_data["secondary"], 1))
+    
+    if random.random() < 0.3 and hashtag_data["trending"]:
+        selected.append(random.choice(hashtag_data["trending"]))
+    
+    return selected[:3]
+
+def optimize_hashtags_for_reach(tweet_text, category):
+    """Add optimized hashtags"""
+    hashtags = get_trending_hashtags(category)
+    
+    if not hashtags:
+        return tweet_text
+    
+    available_space = 280 - len(tweet_text) - 5
+    hashtag_text = " " + " ".join(hashtags)
+    
+    if len(hashtag_text) <= available_space:
+        return tweet_text + hashtag_text
+    
+    return tweet_text
+
+def fetch_rss(feed_url):
+    """Fetch news from an RSS feed"""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response = requests.get(feed_url, headers=headers, timeout=15)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
+        
+        articles = []
+        for entry in feed.entries[:3]:  # Reduced to 3
+            article = {
+                "title": entry.title,
+                "url": entry.link,
+                "published_parsed": getattr(entry, 'published_parsed', None)
+            }
+            articles.append(article)
+        return articles
+    except Exception as e:
+        write_log(f"Error fetching RSS from {feed_url}: {e}")
+        return []
+
+def get_articles_for_category(category):
+    """Get articles for a category"""
+    feeds = RSS_FEEDS.get(category, [])
+    articles = []
+    
+    for feed in feeds[:2]:  # Only check first 2 feeds to save time
+        feed_articles = fetch_rss(feed)
+        if feed_articles:
+            articles.extend(feed_articles)
+            break  # Stop after first successful feed
+    
+    write_log(f"Total articles fetched for {category}: {len(articles)}")
+    return articles
+
+def is_premium_posting_time():
+    """Check if current time is optimal for premium demographics"""
+    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
+    return current_time in PREMIUM_POSTING_TIMES
+
+def is_global_posting_time():
+    """Check if current time is optimal for global audiences"""
+    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
+    return current_time in GLOBAL_POSTING_TIMES
+
+def should_use_premium_strategy(category):
+    """Determine if category should use premium targeting"""
+    return category in BUSINESS_CATEGORIES or is_premium_posting_time()
+
+def should_use_global_strategy(category):
+    """Determine if category should use global timing strategy"""
+    return category in GLOBAL_CATEGORIES or is_global_posting_time()
+
+def generate_premium_targeted_content(title, category, article_url):
     """Generate content specifically appealing to Premium subscribers and professionals"""
     
     strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
@@ -452,13 +703,11 @@ Category: {category}
 Focus Areas: {strategy['focus']}
 Tone: {strategy['tone']}
 
-Content Context: {article_content[:200] if article_content else ""}
-
 Requirements:
 - Appeal to professionals and decision-makers
 - Focus on strategic implications and business insights
 - Include data-driven analysis angles
-- End with thought-provoking question
+- End with thought-provoking question: {strategy['cta']}
 - Under 200 characters (leave room for URL and hashtags)
 - Avoid buzzwords, focus on substance
 
@@ -486,210 +735,74 @@ Write ONLY the tweet text:"""
         # Fallback to regular content generation
         return generate_content_aware_post(title, category, article_url)
 
-def is_premium_posting_time():
-    """Check if current time is optimal for premium demographics"""
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in PREMIUM_POSTING_TIMES
-
-# =========================
-# GROWTH ACCELERATION FEATURES
-# =========================
-
-def get_trending_hashtags(category):
-    """Get optimized hashtags for better reach"""
-    hashtag_data = TRENDING_HASHTAGS.get(category)
-    if not hashtag_data:
-        return []
+def detect_category_with_timing_strategy():
+    """Select category with enhanced logic for premium/global times"""
+    categories = list(RSS_FEEDS.keys())
     
-    # Always include 1 primary hashtag
-    selected = random.sample(hashtag_data["primary"], 1)
+    # During premium posting times, prioritize business-relevant categories
+    if is_premium_posting_time():
+        priority_categories = BUSINESS_CATEGORIES
+        available_priority = [cat for cat in priority_categories if cat in categories]
+        if available_priority and random.random() < 0.7:  # 70% chance for priority
+            category = random.choice(available_priority)
+            write_log(f"Selected business category for premium time: {category}")
+            return category
     
-    # Add 1-2 secondary based on current context
-    secondary_count = random.randint(1, 2)
-    if len(hashtag_data["secondary"]) >= secondary_count:
-        selected.extend(random.sample(hashtag_data["secondary"], secondary_count))
+    # During global posting times, prioritize global categories
+    if is_global_posting_time():
+        priority_categories = GLOBAL_CATEGORIES
+        available_priority = [cat for cat in priority_categories if cat in categories]
+        if available_priority and random.random() < 0.7:  # 70% chance for priority
+            category = random.choice(available_priority)
+            write_log(f"Selected global category for global time: {category}")
+            return category
     
-    # 30% chance to add trending hashtag
-    if random.random() < 0.3 and hashtag_data["trending"]:
-        selected.append(random.choice(hashtag_data["trending"]))
-    
-    return selected[:3]  # Maximum 3 hashtags
-
-def optimize_hashtags_for_reach(tweet_text, category):
-    """Add optimized hashtags for maximum reach without looking spammy"""
-    hashtags = get_trending_hashtags(category)
-    
-    if not hashtags:
-        return tweet_text
-    
-    # Calculate available space
-    available_space = 280 - len(tweet_text) - 5  # 5 char buffer
-    
-    # Build hashtag string
-    hashtag_text = " " + " ".join(hashtags)
-    
-    if len(hashtag_text) <= available_space:
-        return tweet_text + hashtag_text
-    else:
-        # Add what fits, prioritizing primary hashtags
-        for i in range(len(hashtags), 0, -1):
-            test_tags = " " + " ".join(hashtags[:i])
-            if len(test_tags) <= available_space:
-                return tweet_text + test_tags
-    
-    return tweet_text
-
-def create_poll_tweet(category, topic, article_url=None):
-    """Generate engaging poll tweets for higher engagement"""
-    
-    poll_prompts = {
-        "F1": f"Which aspect of {topic} will have the biggest impact on F1's future?",
-        "EPL": f"What's the most important factor in {topic} for Premier League success?",
-        "Crypto": f"Which element of {topic} poses the greatest opportunity for crypto adoption?",
-        "Tesla": f"How will {topic} reshape Tesla's competitive position?",
-        "Space Exploration": f"What's the most significant implication of {topic} for space exploration?"
-    }
-    
-    base_prompt = poll_prompts.get(category, f"What's your take on the latest developments in {topic}?")
-    
+    # Regular random selection
+    category = random.choice(categories)
+    write_log(f"Selected category: {category}")
+    return category
+    """Generate viral-worthy posts"""
     try:
+        prompt = f"""Create an engaging Twitter post about: {title}
+
+Category: {category}
+Requirements:
+- Under 200 characters (leave room for URL and hashtags)
+- Ask thought-provoking questions
+- Create curiosity or controversy
+- Drive engagement and replies
+
+Write ONLY the tweet text:"""
+
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Create engaging poll questions that spark professional debate and encourage detailed replies from industry experts."},
-                {"role": "user", "content": f"""Create a poll question about {topic} in {category}. 
-                
-                Requirements:
-                - Appeal to business professionals and decision-makers
-                - Include strategic or analytical angle
-                - End with 'Vote and share your analysis!'
-                - Under 200 characters to leave room for poll options
-                - Focus on implications and strategic thinking
-                
-                Write only the poll question:"""}
+                {"role": "system", "content": "Create viral Twitter content that drives engagement."},
+                {"role": "user", "content": prompt}
             ],
-            max_tokens=80,
-            temperature=0.7
+            max_tokens=100,
+            temperature=0.8
         )
-        poll_text = response.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
         
-        # Add URL if provided
-        if article_url:
-            short_url = shorten_url_with_fallback(article_url)
-            poll_text += f"\n\n{short_url}"
-        
-        return optimize_hashtags_for_reach(poll_text, category)
     except Exception as e:
-        write_log(f"Poll generation failed: {e}")
-        return optimize_hashtags_for_reach(base_prompt, category)
-
-# =========================
-# ENHANCED CONTENT STRATEGY
-# =========================
-
-def choose_content_format(title, category, article_content="", article_url=None):
-    """Decide whether to post thread, poll, or single tweet based on content and timing"""
-    
-    # THREADS DISABLED - always skip thread logic
-    write_log("Threading is disabled - using single tweet format")
-    
-    # 10% chance for polls on any content (if URL available)
-    poll_chance = random.random() < 0.1 and article_url
-    
-    if poll_chance:
-        write_log(f"Creating poll for: {title[:50]}...")
-        poll_content = create_poll_tweet(category, title, article_url)
-        return "poll", poll_content
-    
-    # Default to enhanced single tweet
-    if is_premium_posting_time():
-        write_log(f"Creating premium-targeted content for: {title[:50]}...")
-        content = generate_premium_targeted_content(title, category, article_url, article_content)
-    else:
-        write_log(f"Creating regular viral content for: {title[:50]}...")
-        content = generate_content_aware_post(title, category, article_url)
-    
-    return "single", content
-
-# =========================
-# UTILITY FUNCTIONS (From Original + Enhancements)
-# =========================
-
-def validate_env_vars():
-    """Validate required environment variables."""
-    required_vars = ["OPENAI_API_KEY", "TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
-    missing = [var for var in required_vars if not os.getenv(var)]
-    if missing:
-        write_log(f"Missing environment variables: {', '.join(missing)}", level="error")
-        raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
-
-def validate_url(url, timeout=8):
-    """Validate that a URL is accessible and returns valid content."""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://www.google.com/'
-        }
-        response = requests.head(url, headers=headers, timeout=timeout, allow_redirects=True)
-        if response.status_code == 200:
-            return True
-        elif response.status_code in [301, 302, 307, 308]:
-            write_log(f"URL redirected but accessible: {url}")
-            return True
-        elif response.status_code == 405:
-            try:
-                response = requests.get(url, headers=headers, timeout=timeout)
-                return response.status_code == 200
-            except:
-                return False
-        else:
-            write_log(f"URL validation failed - Status {response.status_code}: {url}")
-            return False
-    except Exception as e:
-        write_log(f"URL validation failed: {url} - {e}")
-        return False
+        write_log(f"GPT generation failed: {e}")
+        return f"Breaking: {title[:100]}... What's your take?"
 
 def has_been_posted(url):
-    """Check if a URL has already been posted."""
+    """Check if URL already posted"""
     if not os.path.exists(POSTED_LOG):
         return False
     with open(POSTED_LOG, "r") as f:
         return url.strip() in f.read()
 
-def get_content_hash(title):
-    """Generate hash for content similarity checking."""
-    normalized = title.lower().strip()
-    return hashlib.md5(normalized.encode()).hexdigest()
-
-def has_similar_content_posted(title):
-    """Check if similar content has been posted recently."""
-    if not os.path.exists(CONTENT_HASH_LOG):
-        return False
-    content_hash = get_content_hash(title)
-    with open(CONTENT_HASH_LOG, "r") as f:
-        return content_hash in f.read()
-
-def log_content_hash(title):
-    """Record content hash to prevent similar posts."""
-    content_hash = get_content_hash(title)
-    with open(CONTENT_HASH_LOG, "a") as f:
-        f.write(f"{content_hash}\n")
-
 def log_posted(url):
-    """Record posted URL."""
+    """Record posted URL"""
     with open(POSTED_LOG, "a") as f:
         f.write(url.strip() + "\n")
 
-def validate_tweet_length(text):
-    """Ensure tweet doesn't exceed Twitter's character limit."""
-    if len(text) > 280:
-        return text[:277] + "..."
-    return text
-
 def can_post_now():
-    """Check if enough time has passed since last post."""
+    """Check if enough time has passed since last post"""
     global last_post_time
     if last_post_time is None:
         return True
@@ -697,434 +810,126 @@ def can_post_now():
     return time_since_last.total_seconds() >= (POST_INTERVAL_MINUTES * 60)
 
 def shorten_url_with_fallback(long_url):
-    """Try multiple URL shortening services with fallback"""
+    """URL shortening with fallback"""
     try:
         api_url = f"http://tinyurl.com/api-create.php?url={long_url}"
         response = requests.get(api_url, timeout=5)
         if response.status_code == 200 and response.text.strip().startswith('http'):
-            short_url = response.text.strip()
-            write_log(f"URL shortened: {long_url[:50]}... -> {short_url}")
-            return short_url
-    except Exception as e:
-        write_log(f"TinyURL shortening failed: {e}")
-    
-    try:
-        api_url = f"https://is.gd/create.php?format=simple&url={long_url}"
-        response = requests.get(api_url, timeout=5)
-        if response.status_code == 200 and response.text.strip().startswith('http'):
-            short_url = response.text.strip()
-            write_log(f"URL shortened with is.gd: {long_url[:50]}... -> {short_url}")
-            return short_url
-    except Exception as e:
-        write_log(f"is.gd shortening failed: {e}")
-    
-    write_log("All URL shortening services failed, using original URL")
+            return response.text.strip()
+    except:
+        pass
     return long_url
 
-# =========================
-# NEWS FETCHING (From Original)
-# =========================
-
-def fetch_rss(feed_url):
-    """Fetch news from an RSS feed with better error handling."""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(feed_url, headers=headers, timeout=15)
-        response.raise_for_status()
-        feed = feedparser.parse(response.content)
-        if feed.bozo:
-            write_log(f"Feed parsing issues for {feed_url} - continuing anyway")
-        articles = []
-        for entry in feed.entries[:5]:
-            article = {
-                "title": entry.title,
-                "url": entry.link,
-                "published_parsed": getattr(entry, 'published_parsed', None)
-            }
-            articles.append(article)
-        return articles
-    except Exception as e:
-        write_log(f"Error fetching RSS from {feed_url}: {e}")
-        return []
-
-def is_fresh(article):
-    """Check if article is within freshness window."""
-    pub_date = article.get('published_parsed')
-    if not pub_date:
-        return True
-    try:
-        dt = datetime(*pub_date[:6], tzinfo=pytz.UTC)
-        return datetime.now(pytz.UTC) - dt <= FRESHNESS_WINDOW
-    except:
-        return True
-
-def get_articles_for_category(category):
-    """Get articles for a category with fallback handling."""
-    feeds = RSS_FEEDS.get(category, [])
-    articles = []
-    valid_feeds_found = False
-    
-    for feed in feeds:
-        write_log(f"Processing RSS feed for {category}: {feed}")
-        feed_articles = fetch_rss(feed)
-        if feed_articles:
-            valid_feeds_found = True
-            articles.extend(feed_articles)
-        
-    if not articles and not valid_feeds_found:
-        write_log(f"No articles found for {category} after checking all feeds")
-            
-    write_log(f"Total articles fetched for {category}: {len(articles)}")
-    return articles
-
-# =========================
-# CONTENT EXTRACTION & GENERATION
-# =========================
-
-def extract_article_content(url):
-    """Fetch and extract main content from article URL."""
-    try:
-        config = Config()
-        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
-        config.request_timeout = 15
-        
-        article = Article(url, config=config)
-        article.download()
-        article.parse()
-        
-        if article.text and len(article.text.strip()) > 50:
-            return article.text[:500]
-        return None
-    except Exception as e:
-        write_log(f"Newspaper3k failed for {url}: {e}")
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Referer': 'https://www.google.com/'
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Try meta description first
-            meta_desc = soup.find('meta', attrs={'name': 'description'})
-            if meta_desc and meta_desc.get('content'):
-                return meta_desc['content'][:500]
-            
-            # Try to find article content
-            paragraphs = soup.find_all('p')
-            for p in paragraphs:
-                text = p.get_text().strip()
-                if len(text) > 50:
-                    return text[:500]
-            return None
-        except Exception as e:
-            write_log(f"Could not extract content from {url}: {e}")
-            return None
-
-def generate_content_aware_post(title, category, article_url, trend_term=None):
-    """Generate viral-worthy posts that drive engagement (fallback method)."""
-    try:
-        article_content = extract_article_content(article_url)
-        content_context = f"Title: {title}\n"
-        if article_content:
-            content_context += f"Content: {article_content}\n"
-        content_context += f"Category: {category}\n"
-        if trend_term:
-            content_context += f"Trending topic: {trend_term}\n"
-        
-        prompt = f"""Create a highly engaging Twitter post that drives retweets, likes, and comments (under 200 characters):
-
-{content_context}
-
-Make it viral by using these techniques:
-- Ask thought-provoking questions that demand answers
-- Use contrarian takes or challenge conventional wisdom  
-- Include bold predictions or hot takes
-- Create "Wait, what?" moments that make people double-take
-- Use psychological triggers: curiosity gaps, social proof, controversy
-- End with questions that spark debate in replies
-
-Write ONLY the tweet text, no quotes or explanations:"""
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a viral content creator who understands social media psychology and creates posts that people can't help but engage with."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=120,
-            temperature=0.8
-        )
-        return response.choices[0].message.content.strip()
-        
-    except Exception as e:
-        write_log(f"GPT generation failed: {e}")
-        return f"Breaking: {title[:100]}... What's your take on this?"
-
-# =========================
-# ENHANCED POSTING SYSTEM
-# =========================
-
-def test_twitter_connection():
-    """Test Twitter API connection with detailed debugging"""
-    try:
-        write_log("Testing Twitter API connection...")
-        
-        # Test API v1.1 (tweepy.API)
-        try:
-            me = twitter_api.verify_credentials()
-            write_log(f"API v1.1 authenticated successfully as: @{me.screen_name}")
-        except Exception as e:
-            write_log(f"API v1.1 authentication failed: {e}")
-        
-        # Test API v2 (tweepy.Client)
-        try:
-            me = twitter_client.get_me()
-            write_log(f"API v2 authenticated successfully as: {me.data.username}")
-        except Exception as e:
-            write_log(f"API v2 authentication failed: {e}")
-            
-        return True
-    except Exception as e:
-        write_log(f"Twitter connection test failed: {e}")
-        return False
-
-def post_enhanced_content(content_type, content_data, category, article_url=None):
-    """Post content based on type (single, thread, poll) - THREADS DISABLED"""
+def post_main_content(category):
+    """Post main content using write quota with premium/global strategies"""
     global last_post_time
     
-    if not can_post_now():
-        write_log("Rate limited - cannot post now")
+    if not can_post_now() or not quota_manager.can_write(1):
+        write_log("Cannot post - rate limited or quota exhausted")
         return False
     
-    try:
-        if content_type == "thread":
-            write_log("Thread posting is disabled - converting to single tweet")
-            # Convert first thread part to single tweet
-            if isinstance(content_data, list) and content_data:
-                content_data = content_data[0]
-            content_type = "single"
+    articles = get_articles_for_category(category)
+    
+    for article in articles:
+        if has_been_posted(article["url"]):
+            continue
         
-        if content_type == "poll":
-            # Note: Twitter API v2 polls require different handling
-            # For now, post as regular tweet with poll-like content
-            tweet_text = validate_tweet_length(content_data)
-            
-            write_log(f"Attempting to post poll-style tweet: {tweet_text[:50]}...")
-            result = twitter_client.create_tweet(text=tweet_text)
-            write_log(f"Posted poll-style content successfully: {result.data['id']}")
-            success = True
-            
-        else:  # single tweet
-            tweet_text = content_data
-            if article_url:
-                short_url = shorten_url_with_fallback(article_url)
-                tweet_text = f"{tweet_text}\n\n{short_url}"
-            
-            tweet_text = optimize_hashtags_for_reach(tweet_text, category)
-            tweet_text = validate_tweet_length(tweet_text)
-            
-            write_log(f"Attempting to post single tweet: {tweet_text[:50]}...")
-            write_log(f"Full tweet text ({len(tweet_text)} chars): {tweet_text}")
-            
-            result = twitter_client.create_tweet(text=tweet_text)
-            write_log(f"Posted single tweet successfully: {result.data['id']}")
-            success = True
+        # Choose content generation strategy based on timing and category
+        if should_use_premium_strategy(category):
+            write_log(f"Using premium strategy for {category} at {datetime.now(pytz.UTC).strftime('%H:%M')}")
+            tweet_text = generate_premium_targeted_content(article["title"], category, article["url"])
+        else:
+            write_log(f"Using standard strategy for {category}")
+            tweet_text = generate_content_aware_post(article["title"], category, article["url"])
         
-        if success:
+        short_url = shorten_url_with_fallback(article["url"])
+        full_tweet = f"{tweet_text}\n\n{short_url}"
+        full_tweet = optimize_hashtags_for_reach(full_tweet, category)
+        
+        if len(full_tweet) > 280:
+            full_tweet = full_tweet[:277] + "..."
+        
+        try:
+            response = twitter_client.create_tweet(text=full_tweet)
+            quota_manager.use_write(1)
+            log_posted(article["url"])
             last_post_time = datetime.now(pytz.UTC)
+            
+            timing_type = "premium" if is_premium_posting_time() else "global" if is_global_posting_time() else "standard"
+            write_log(f"Posted {timing_type} content for {category}: {article['title'][:50]}...")
             return True
             
-    except Exception as e:
-        error_msg = str(e)
-        write_log(f"Error posting content: {e}")
-        write_log(f"Error type: {type(e)}")
-        
-        if "429" in error_msg or "rate limit" in error_msg.lower():
-            write_log("Rate limit hit. Will try again on next scheduled run.")
-        elif "duplicate" in error_msg.lower():
-            write_log("Duplicate tweet detected. Skipping...")
-        elif "403" in error_msg or "forbidden" in error_msg.lower():
-            write_log("403 Forbidden - Check API permissions and authentication")
-            # Test connection when we get 403
-            test_twitter_connection()
-        else:
-            write_log(f"Unexpected error posting content: {e}")
-        return False
+        except Exception as e:
+            write_log(f"Error posting main content: {e}")
+            return False
     
+    write_log(f"No new articles to post for {category}")
     return False
 
 # =========================
-# ENHANCED MAIN LOGIC
+# SCHEDULER SYSTEM
 # =========================
 
-def post_dynamic_update_enhanced(category, trend_term=None):
-    """Enhanced posting with threading disabled, premium targeting, and growth features"""
-    
-    # Check rate limiting first
-    if not can_post_now():
-        write_log(f"Rate limited - will retry {category} on next scheduled run")
-        return False
-        
-    articles = get_articles_for_category(category)
-    fresh_articles = [a for a in articles if is_fresh(a)]
-    target_articles = fresh_articles if fresh_articles else articles
-    
-    valid_articles_processed = 0
-    
-    for article in target_articles:
-        # Skip already posted or similar content
-        if has_been_posted(article["url"]) or has_similar_content_posted(article["title"]):
-            continue
-            
-        # Validate URL before processing
-        if not validate_url(article["url"]):
-            write_log(f"Skipping article with broken URL: {article['title'][:60]}...")
-            continue
-        
-        valid_articles_processed += 1
-        
-        # Check if we can post BEFORE generating content
-        if not can_post_now():
-            write_log(f"Rate limited - will retry {category} on next scheduled run")
-            return False
-        
-        # Extract article content for better context
-        article_content = extract_article_content(article["url"])
-        
-        # Choose content format based on content and timing (threads disabled)
-        content_type, content_data = choose_content_format(
-            article["title"], 
-            category, 
-            article_content or "", 
-            article["url"]
-        )
-        
-        # Post the content
-        if post_enhanced_content(content_type, content_data, category, article["url"]):
-            log_posted(article["url"])
-            log_content_hash(article["title"])
-            write_log(f"Posted {content_type} content for {category}: {article['title'][:50]}...")
-            return True
-        else:
-            write_log(f"Failed to post {content_type} for {category} - stopping further attempts")
-            return False
-    
-    if valid_articles_processed == 0:
-        write_log(f"No valid articles found for {category}")
-    
-    # Fallback to evergreen content if no articles worked
-    if can_post_now():
-        write_log(f"No new articles for {category}, posting fallback content...")
-        fallback_content = generate_fallback_content(category)
-        return post_enhanced_content("single", fallback_content, category)
-    else:
-        write_log(f"Rate limited - skipping fallback content for {category}")
-        return False
+def should_post_main_content():
+    """Check if it's time for main content"""
+    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
+    return current_time in MAIN_POSTING_TIMES
 
-def generate_fallback_content(category):
-    """Generate fallback content when no fresh articles available"""
-    evergreen_topics = {
-        "EPL": "What makes a Premier League season truly memorable? The drama, the goals, or the unexpected twists?",
-        "F1": "F1 technology continues to push boundaries. Which innovation will have the biggest impact on road cars?",
-        "Crypto": "Institutional crypto adoption is accelerating. What's the most undervalued aspect investors are missing?",
-        "Tesla": "Tesla's influence extends beyond cars. Which industry will they disrupt next?",
-        "Space Exploration": "Private space companies are reshaping exploration. What's the most exciting possibility ahead?",
-        "MotoGP": "MotoGP riders push physics to the limit. What separates champions from the rest of the field?",
-        "Cycling": "Professional cycling combines strategy, endurance, and split-second decisions. What's the most underrated skill?"
-    }
-    
-    base_content = evergreen_topics.get(category, f"What's the most exciting development you're following in {category}?")
-    
-    # Add premium angle if it's premium time
-    if is_premium_posting_time():
-        premium_angle = f"From a business perspective: {base_content}"
-        return premium_angle
-    
-    return base_content
+def should_run_reply_campaign():
+    """Check if it's time for reply campaign"""
+    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
+    return current_time in REPLY_CAMPAIGN_TIMES
 
-# =========================
-# SCHEDULING SYSTEM
-# =========================
-
-def detect_category_from_trends():
-    """Select category with enhanced logic for premium times"""
-    categories = list(RSS_FEEDS.keys())
-    
-    # During premium posting times, prioritize business-relevant categories
-    if is_premium_posting_time():
-        priority_categories = ["Crypto", "Tesla", "F1", "Space Exploration"]
-        available_priority = [cat for cat in priority_categories if cat in categories]
-        if available_priority and random.random() < 0.7:  # 70% chance for priority
-            category = random.choice(available_priority)
-            write_log(f"Selected priority category for premium time: {category}")
-            return category, None
-    
-    # Regular random selection
-    category = random.choice(categories)
-    write_log(f"Selected category: {category}")
-    return category, None
-
-def should_post_now():
-    """Enhanced scheduling that considers premium times"""
-    current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
-    
-    all_scheduled_times = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
-    
-    write_log(f"Checking time: {current_minute} against {len(all_scheduled_times)} scheduled times")
-    result = current_minute in all_scheduled_times
-    
-    if result and current_minute in PREMIUM_POSTING_TIMES:
-        write_log(f"Premium posting time detected: {current_minute}")
-    
-    return result
-
-def run_enhanced_job():
-    """Enhanced job runner with all new features (threads disabled)"""
+def run_main_content_job():
+    """Run main content posting job with strategic timing"""
     try:
-        if not can_post_now():
-            write_log("Still rate limited from previous posts - skipping this run")
-            return
-            
-        write_log("Starting enhanced dynamic job...")
-        write_log(f"Premium time: {is_premium_posting_time()}")
-        write_log(f"Thread available: False (disabled)")
+        write_log("Starting strategic main content job...")
         
-        category, trend_term = detect_category_from_trends()
-        success = post_dynamic_update_enhanced(category, trend_term)
+        # Log current timing context
+        current_time = datetime.now(pytz.UTC).strftime("%H:%M")
+        is_premium = is_premium_posting_time()
+        is_global = is_global_posting_time()
         
-        if not success and can_post_now():
-            write_log("Primary category failed, trying backup category...")
-            backup_categories = [cat for cat in RSS_FEEDS.keys() if cat != category]
-            random.shuffle(backup_categories)
-            
-            # Only try ONE backup to avoid rate limit spam
-            for backup_category in backup_categories[:1]:
-                if not can_post_now():
-                    write_log("Rate limited - stopping backup attempts")
-                    break
-                if post_dynamic_update_enhanced(backup_category):
-                    write_log(f"Backup category succeeded: {backup_category}")
-                    break
+        write_log(f"Current time: {current_time} (Premium: {is_premium}, Global: {is_global})")
         
-        write_log("Enhanced dynamic job completed")
+        # Use strategic category selection
+        category = detect_category_with_timing_strategy()
+        
+        success = post_main_content(category)
+        if not success:
+            # Try one backup category with same strategic logic
+            categories = list(RSS_FEEDS.keys())
+            backup_categories = [cat for cat in categories if cat != category]
+            if backup_categories and quota_manager.can_write(1):
+                backup_category = random.choice(backup_categories)
+                write_log(f"Trying backup category: {backup_category}")
+                post_main_content(backup_category)
+        
+        write_log("Strategic main content job completed")
     except Exception as e:
-        write_log(f"Error in run_enhanced_job: {e}")
+        write_log(f"Error in main content job: {e}")
 
-def start_enhanced_scheduler():
-    """Enhanced scheduler with premium time awareness"""
-    write_log("Starting enhanced scheduler...")
-    write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
-    write_log(f"Threading: DISABLED")
+def run_reply_job():
+    """Run reply campaign job"""
+    try:
+        write_log("Starting ultra-conservative reply campaign...")
+        reply_orchestrator = ReplyOrchestrator()
+        reply_orchestrator.execute_ultra_conservative_reply_campaign()
+        write_log("Reply campaign completed")
+    except Exception as e:
+        write_log(f"Error in reply campaign: {e}")
+
+def start_conservative_scheduler():
+    """Ultra-conservative scheduler with premium/global timing strategies"""
+    write_log("Starting ultra-conservative scheduler with strategic timing...")
+    write_log(f"Premium posting times (business focus): {PREMIUM_POSTING_TIMES}")
+    write_log(f"Global posting times (sports/entertainment): {GLOBAL_POSTING_TIMES}")
+    write_log(f"Reply campaign times (3/day): {REPLY_CAMPAIGN_TIMES}")
+    write_log(f"Business categories: {BUSINESS_CATEGORIES}")
+    write_log(f"Global categories: {GLOBAL_CATEGORIES}")
     
-    all_times = sorted(PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES)
-    write_log(f"Scheduled times: {all_times}")
-    write_log(f"Premium times: {PREMIUM_POSTING_TIMES}")
+    quota_status = quota_manager.get_quota_status()
+    write_log(f"Monthly quota: {quota_status}")
     
     last_checked_minute = None
     
@@ -1132,21 +937,28 @@ def start_enhanced_scheduler():
         try:
             current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
             
-            # Only check once per minute
             if current_minute != last_checked_minute:
-                if should_post_now():
-                    write_log(f"Scheduled time reached: {current_minute}")
-                    run_enhanced_job()
+                # Check for main content posting
+                if should_post_main_content():
+                    timing_type = "PREMIUM" if is_premium_posting_time() else "GLOBAL" if is_global_posting_time() else "STANDARD"
+                    write_log(f"{timing_type} content time: {current_minute}")
+                    run_main_content_job()
+                
+                # Check for reply campaigns
+                elif should_run_reply_campaign():
+                    write_log(f"Reply campaign time: {current_minute}")
+                    run_reply_job()
+                
                 last_checked_minute = current_minute
                 
-            time.sleep(30)  # Check every 30 seconds
+            time.sleep(30)
             
         except Exception as e:
-            write_log(f"ERROR in enhanced scheduler loop: {e}")
+            write_log(f"ERROR in scheduler loop: {e}")
             time.sleep(60)
 
 # =========================
-# HEALTH SERVER (From Original)
+# HEALTH SERVER
 # =========================
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -1155,17 +967,24 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         
-        # Enhanced health check with feature status
-        status = f"""Enhanced Twitter Bot Status: RUNNING
-        
-Features Active:
+        quota_status = quota_manager.get_quota_status()
+        status = f"""Ultra-Conservative Twitter Bot Status: RUNNING
+
+Monthly Quota:
+- Reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)
+- Writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)
+
+Daily Allocation:
+- Main Posts: 12/day (360/month)
+- Replies: 3/day (90/month)
+- Emergency Buffer: 50/month
+
+Features:
 - Threading: DISABLED
-- Premium Targeting: {is_premium_posting_time()}
-- Growth Acceleration: Enabled
-- Rate Limiting: {can_post_now()}
+- Conservative Reply System: ENABLED
+- Smart Quota Management: ACTIVE
 
 Last Post: {last_post_time or 'Never'}
-Last Thread: DISABLED
         """
         self.wfile.write(status.encode())
     
@@ -1175,14 +994,14 @@ Last Thread: DISABLED
         self.end_headers()
     
     def log_message(self, format, *args):
-        pass  # Suppress server access logs
+        pass
 
 def start_health_server():
-    """Start health check server for Render Web Service."""
+    """Start health check server"""
     port = int(os.environ.get('PORT', 10000))
     try:
         server = HTTPServer(('0.0.0.0', port), HealthHandler)
-        write_log(f"Enhanced health server starting on port {port}")
+        write_log(f"Health server starting on port {port}")
         server.serve_forever()
     except Exception as e:
         write_log(f"Health server failed to start: {e}")
@@ -1191,63 +1010,104 @@ def start_health_server():
 # TESTING FUNCTIONS
 # =========================
 
-def test_enhanced_features():
-    """Test all new enhanced features"""
-    write_log("=== TESTING ENHANCED FEATURES ===")
+def test_quota_system():
+    """Test quota management system"""
+    write_log("=== TESTING QUOTA SYSTEM ===")
+    status = quota_manager.get_quota_status()
+    write_log(f"Current quota: {status}")
     
-    # Test premium time detection
-    write_log(f"Current time premium: {is_premium_posting_time()}")
+    # Test read quota
+    can_read = quota_manager.can_read(1)
+    write_log(f"Can read (1): {can_read}")
+    
+    # Test write quota
+    can_write = quota_manager.can_write(1)
+    write_log(f"Can write (1): {can_write}")
+    
+    write_log("=== QUOTA TEST COMPLETE ===")
+
+def test_reply_system():
+    """Test reply system without using quota"""
+    write_log("=== TESTING REPLY SYSTEM ===")
+    
+    orchestrator = ReplyOrchestrator()
+    
+    # Test daily limits
+    daily_replies = orchestrator.load_daily_count(orchestrator.daily_replies_file, "replies")
+    daily_reads = orchestrator.load_daily_count(orchestrator.daily_reads_file, "reads")
+    
+    write_log(f"Daily replies used: {daily_replies}/3")
+    write_log(f"Daily reads used: {daily_reads}/3")
+    write_log(f"Can reply today: {orchestrator.can_reply_today()}")
+    
+    write_log("=== REPLY SYSTEM TEST COMPLETE ===")
+
+def test_main_content_system():
+    """Test main content system"""
+    write_log("=== TESTING MAIN CONTENT SYSTEM ===")
+    
+    # Test category selection
+    categories = list(RSS_FEEDS.keys())
+    selected = random.choice(categories)
+    write_log(f"Selected category: {selected}")
+    
+    # Test article fetching
+    articles = get_articles_for_category(selected)
+    write_log(f"Fetched {len(articles)} articles")
     
     # Test hashtag optimization
-    test_tweet = "This is a test tweet about Formula 1 racing"
-    optimized = optimize_hashtags_for_reach(test_tweet, "F1")
-    write_log(f"Hashtag optimization test: {optimized}")
+    test_text = "This is a test tweet"
+    optimized = optimize_hashtags_for_reach(test_text, selected)
+    write_log(f"Hashtag optimization: {optimized}")
     
-    # Test thread detection (should be disabled)
-    test_title = "Breaking: Major investigation reveals significant changes in Formula 1 regulations"
-    thread_worthy = should_create_thread(test_title)
-    write_log(f"Thread detection test (should be False): {thread_worthy}")
-    
-    # Test content format selection
-    content_type, content_data = choose_content_format(test_title, "F1")
-    write_log(f"Content format selection: {content_type}")
-    
-    # Test Twitter connection
-    test_twitter_connection()
-    
-    write_log("=== ENHANCED FEATURES TEST COMPLETE ===")
-
-def test_single_enhanced_post(category=None):
-    """Test enhanced posting system"""
-    if category is None:
-        category, trend_term = detect_category_from_trends()
-    else:
-        trend_term = None
-    
-    write_log(f"Testing enhanced post for category: {category}")
-    write_log(f"Premium time: {is_premium_posting_time()}")
-    write_log(f"Thread available: False (disabled)")
-    
-    return post_dynamic_update_enhanced(category, trend_term)
+    write_log("=== MAIN CONTENT TEST COMPLETE ===")
 
 def test_auth():
-    """Test Twitter API authentication."""
+    """Test Twitter API authentication"""
     try:
         me = twitter_api.verify_credentials()
-        write_log(f"Authentication successful! Logged in as: @{me.screen_name}")
-        write_log(f"Account ID: {me.id}")
+        write_log(f"Authentication successful! @{me.screen_name}")
         write_log(f"Followers: {me.followers_count}")
         return True
     except Exception as e:
         write_log(f"Authentication failed: {e}")
         return False
 
+def run_single_test_post():
+    """Test posting a single tweet (uses quota)"""
+    write_log("=== TESTING SINGLE POST ===")
+    
+    if not quota_manager.can_write(1):
+        write_log("Cannot test - write quota exhausted")
+        return False
+    
+    categories = list(RSS_FEEDS.keys())
+    category = random.choice(categories)
+    
+    result = post_main_content(category)
+    write_log(f"Test post result: {result}")
+    
+    return result
+
+def run_single_test_reply():
+    """Test reply system (uses quota)"""
+    write_log("=== TESTING SINGLE REPLY ===")
+    
+    if not quota_manager.can_read(1) or not quota_manager.can_write(1):
+        write_log("Cannot test - quota exhausted")
+        return False
+    
+    orchestrator = ReplyOrchestrator()
+    orchestrator.execute_ultra_conservative_reply_campaign()
+    
+    return True
+
 # =========================
 # MAIN EXECUTION
 # =========================
 
 if __name__ == "__main__":
-    write_log("=== ENHANCED TWITTER BOT STARTUP (THREADS DISABLED) ===")
+    write_log("=== ULTRA-CONSERVATIVE TWITTER BOT STARTUP ===")
     
     # Validate environment
     validate_env_vars()
@@ -1257,20 +1117,31 @@ if __name__ == "__main__":
         write_log("CRITICAL: Authentication failed. Bot cannot run.")
         exit(1)
     
-    write_log("=== ENHANCED FEATURES INITIALIZED ===")
-    write_log("✗ Threading system DISABLED")
-    write_log("✓ Premium user targeting enabled")
-    write_log("✓ Growth acceleration features loaded")
-    write_log("✓ Enhanced hashtag optimization ready")
-    write_log("✓ Single-format content generation active")
+    # Display startup info
+    quota_status = quota_manager.get_quota_status()
+    write_log("=== QUOTA STATUS ===")
+    write_log(f"Monthly reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)")
+    write_log(f"Monthly writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)")
+    
+    write_log("=== ULTRA-CONSERVATIVE FEATURES ===")
+    write_log("✓ Main posts: 12/day (360/month)")
+    write_log("✓ Replies: 3/day (90/month)")
+    write_log("✓ Reads: 3/day (90/month)")
+    write_log("✓ Emergency buffer: 50 writes/month")
+    write_log("✓ Smart quota management active")
+    write_log("✗ Threading disabled")
     
     # Start health server in background
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     
-    # Uncomment for testing:
-    # test_enhanced_features()
-    # test_single_enhanced_post("F1")
+    # Uncomment for testing (WARNING: Uses real quota):
+    # test_quota_system()
+    # test_reply_system()
+    # test_main_content_system()
+    # run_single_test_post()  # Uses 1 write quota
+    # run_single_test_reply()  # Uses 1 read + 1 write quota
     
-    # Start the enhanced scheduler
-    start_enhanced_scheduler()
+    # Start the ultra-conservative scheduler
+    write_log("Starting ultra-conservative scheduler...")
+    start_conservative_scheduler()
