@@ -141,8 +141,8 @@ POSTED_LOG = "posted_links.txt"
 CONTENT_HASH_LOG = "posted_content_hashes.txt"
 
 # Enhanced rate limiting configuration
-DAILY_POST_LIMIT = 12  # Main content posts per day
-POST_INTERVAL_MINUTES = 120  # 2 hours between posts
+DAILY_POST_LIMIT = 15  # Main content posts per day
+POST_INTERVAL_MINUTES = 90 # 1 hour 30 mins between posts
 last_post_time = None
 FRESHNESS_WINDOW = timedelta(hours=72)
 
@@ -152,20 +152,23 @@ DAILY_READ_LIMIT = 3   # Only 3 reads per day for reply research
 
 # Premium posting times - targeting business professionals and decision-makers
 PREMIUM_POSTING_TIMES = [
-    "09:00",  # Morning business hours
-    "13:30",  # Lunch break business crowd
-    "16:00",  # Afternoon peak
-    "18:00",  # Evening engagement
-    "20:00",  # Prime evening time
-    "21:40",  # Night professionals
+    "08:00",  # Morning business hours
+    "12:00",  # Lunch break business crowd
+    "14:00",  # Afternoon peak
+    "16:00",  # Evening engagement
+    "18:00",  # Prime evening time
+    "22:00",  # Late night Americas
+   
 ]
 
 # Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
-    "02:30",  # Asia/Australia morning
-    "06:30",  # Europe morning
-    "11:30",  # Pre-lunch global
-    "23:40",  # Late night Americas
+    "02:00",  # Asia/Australia morning
+    "04:00:,  # Early Morning Nairobi
+    "06:00",  # Europe morning
+    "10:00",  # Pre-lunch global
+    "20:00",  # Night professionals
+    "00:00",  # Late night Americas
 ]
 
 # All main posting times combined
@@ -1145,3 +1148,4 @@ if __name__ == "__main__":
     # Start the ultra-conservative scheduler
     write_log("Starting ultra-conservative scheduler...")
     start_conservative_scheduler()
+
