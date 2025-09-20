@@ -941,10 +941,10 @@ def start_conservative_scheduler():
             current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
             
             if current_minute != last_checked_minute:
-               write_log(f"Checking time: {current_minute} against {len(MAIN_POSTING_TIMES + REPLY_CAMPAIGN_TIMES)} scheduled times")
-               
+                write_log(f"Checking time: {current_minute} against {len(MAIN_POSTING_TIMES + REPLY_CAMPAIGN_TIMES)} scheduled times")
+                
                 # Check for main content posting
-               if should_post_main_content():
+                if should_post_main_content():
                     timing_type = "PREMIUM" if is_premium_posting_time() else "GLOBAL" if is_global_posting_time() else "STANDARD"
                     write_log(f"{timing_type} content time: {current_minute}")
                     run_main_content_job()
@@ -1150,6 +1150,7 @@ if __name__ == "__main__":
     # Start the ultra-conservative scheduler
     write_log("Starting ultra-conservative scheduler...")
     start_conservative_scheduler()
+
 
 
 
