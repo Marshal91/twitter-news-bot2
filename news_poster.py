@@ -164,7 +164,7 @@ PREMIUM_POSTING_TIMES = [
 # Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
     "02:00",  # Asia/Australia morning
-    "04:00:,  # Early Morning Nairobi
+    "04:00",  # Early Morning Nairobi
     "06:00",  # Europe morning
     "10:00",  # Pre-lunch global
     "20:00",  # Night professionals
@@ -1148,4 +1148,5 @@ if __name__ == "__main__":
     # Start the ultra-conservative scheduler
     write_log("Starting ultra-conservative scheduler...")
     start_conservative_scheduler()
+
 
