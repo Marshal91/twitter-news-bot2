@@ -1,6 +1,6 @@
 """
 Enhanced news_poster.py
-Incorporates threading, verified user targeting, and growth acceleration features.
+Threading functionality commented out to resolve posting issues.
 """
 
 import os
@@ -250,169 +250,181 @@ def write_log(message, level="info"):
         logging.info(message)
 
 # =========================
-# THREAD CREATION SYSTEM
+# THREAD CREATION SYSTEM (COMMENTED OUT)
 # =========================
 
 def should_create_thread(title, content=""):
-    return False
-    """Determine if content warrants a thread based on keywords and complexity"""
-    text_to_analyze = (title + " " + content).lower()
+    """DISABLED: Determine if content warrants a thread based on keywords and complexity"""
+    return False  # Always return False to disable threading
     
-    # Check for thread-worthy keywords
-    keyword_score = sum(1 for keyword in THREAD_WORTHY_KEYWORDS if keyword in text_to_analyze)
-    
-    # Check content length and complexity
-    complexity_score = 0
-    if len(text_to_analyze) > 200:
-        complexity_score += 1
-    if ":" in title and len(title.split(":")) > 1:
-        complexity_score += 1
-    if any(word in text_to_analyze for word in ["because", "however", "therefore", "analysis"]):
-        complexity_score += 1
-    
-    total_score = keyword_score + complexity_score
-    
-    # Increased thread probability - more aggressive threading
-    if total_score >= 3:
-        return random.random() < 0.7  # 70% chance for high-score content
-    elif total_score >= 2:
-        return random.random() < 0.4  # 40% chance for medium-score content
-    elif total_score >= 1:
-        return random.random() < 0.2  # 20% chance for low-score content
-    
-    # Base 10% chance for any content during premium times
-    return random.random() < 0.1
+    # Original logic commented out
+    # text_to_analyze = (title + " " + content).lower()
+    # 
+    # # Check for thread-worthy keywords
+    # keyword_score = sum(1 for keyword in THREAD_WORTHY_KEYWORDS if keyword in text_to_analyze)
+    # 
+    # # Check content length and complexity
+    # complexity_score = 0
+    # if len(text_to_analyze) > 200:
+    #     complexity_score += 1
+    # if ":" in title and len(title.split(":")) > 1:
+    #     complexity_score += 1
+    # if any(word in text_to_analyze for word in ["because", "however", "therefore", "analysis"]):
+    #     complexity_score += 1
+    # 
+    # total_score = keyword_score + complexity_score
+    # 
+    # # Increased thread probability - more aggressive threading
+    # if total_score >= 3:
+    #     return random.random() < 0.7  # 70% chance for high-score content
+    # elif total_score >= 2:
+    #     return random.random() < 0.4  # 40% chance for medium-score content
+    # elif total_score >= 1:
+    #     return random.random() < 0.2  # 20% chance for low-score content
+    # 
+    # # Base 10% chance for any content during premium times
+    # return random.random() < 0.1
 
 def can_post_thread():
-    """Check if enough time has passed since last thread"""
-    global last_thread_time
-    if last_thread_time is None:
-        return True
-    time_since_last = datetime.now(pytz.UTC) - last_thread_time
-    return time_since_last.total_seconds() >= (THREAD_COOLDOWN_HOURS * 3600)
+    """DISABLED: Check if enough time has passed since last thread"""
+    return False  # Always return False to disable threading
+    
+    # Original logic commented out
+    # global last_thread_time
+    # if last_thread_time is None:
+    #     return True
+    # time_since_last = datetime.now(pytz.UTC) - last_thread_time
+    # return time_since_last.total_seconds() >= (THREAD_COOLDOWN_HOURS * 3600)
 
-def create_thread_content(title, category, article_content="", trend_term=None):
-    """Generate multi-part thread content for higher engagement"""
+# def create_thread_content(title, category, article_content="", trend_term=None):
+#     """DISABLED: Generate multi-part thread content for higher engagement"""
+#     write_log("Thread creation is disabled")
+#     return None
     
-    # Get premium strategy if applicable
-    premium_strategy = PREMIUM_CONTENT_STRATEGIES.get(category, {})
-    focus_area = premium_strategy.get("focus", "key insights and implications")
-    cta = premium_strategy.get("cta", "What's your take on this?")
-    
-    context = f"""
-    Title: {title}
-    Category: {category}
-    Content: {article_content[:300] if article_content else ""}
-    Focus on: {focus_area}
-    """
-    
-    thread_prompts = [
-        f"""Create a compelling Twitter thread opener about: {title}
-        
-        Requirements:
-        - Hook that creates curiosity gap
-        - Under 250 characters
-        - End with 🧵 or "Thread:"
-        - Make people want to read more
-        - Focus on: {focus_area}
-        
-        Write only the tweet text:""",
-        
-        f"""Create Part 2 of the thread about: {title}
-        
-        Requirements:
-        - Start with "2/"
-        - Provide the main insight or surprising angle
-        - Under 250 characters
-        - Focus on: {focus_area}
-        - Bridge to the conclusion
-        
-        Write only the tweet text:""",
-        
-        f"""Create Part 3 (final) of the thread about: {title}
-        
-        Requirements:
-        - Start with "3/"
-        - Provide conclusion and implications
-        - End with engaging question: {cta}
-        - Under 250 characters
-        - Encourage replies and engagement
-        
-        Write only the tweet text:"""
-    ]
-    
-    thread_parts = []
-    for i, prompt in enumerate(thread_prompts):
-        try:
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You create viral Twitter threads that drive engagement from business professionals and decision-makers."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=100,
-                temperature=0.8
-            )
-            thread_parts.append(response.choices[0].message.content.strip())
-            time.sleep(1)  # Avoid rate limits on OpenAI
-        except Exception as e:
-            write_log(f"Thread part {i+1} generation failed: {e}")
-            return None
-    
-    return thread_parts
+    # Original function commented out
+    # # Get premium strategy if applicable
+    # premium_strategy = PREMIUM_CONTENT_STRATEGIES.get(category, {})
+    # focus_area = premium_strategy.get("focus", "key insights and implications")
+    # cta = premium_strategy.get("cta", "What's your take on this?")
+    # 
+    # context = f"""
+    # Title: {title}
+    # Category: {category}
+    # Content: {article_content[:300] if article_content else ""}
+    # Focus on: {focus_area}
+    # """
+    # 
+    # thread_prompts = [
+    #     f"""Create a compelling Twitter thread opener about: {title}
+    #     
+    #     Requirements:
+    #     - Hook that creates curiosity gap
+    #     - Under 250 characters
+    #     - End with 🧵 or "Thread:"
+    #     - Make people want to read more
+    #     - Focus on: {focus_area}
+    #     
+    #     Write only the tweet text:""",
+    #     
+    #     f"""Create Part 2 of the thread about: {title}
+    #     
+    #     Requirements:
+    #     - Start with "2/"
+    #     - Provide the main insight or surprising angle
+    #     - Under 250 characters
+    #     - Focus on: {focus_area}
+    #     - Bridge to the conclusion
+    #     
+    #     Write only the tweet text:""",
+    #     
+    #     f"""Create Part 3 (final) of the thread about: {title}
+    #     
+    #     Requirements:
+    #     - Start with "3/"
+    #     - Provide conclusion and implications
+    #     - End with engaging question: {cta}
+    #     - Under 250 characters
+    #     - Encourage replies and engagement
+    #     
+    #     Write only the tweet text:"""
+    # ]
+    # 
+    # thread_parts = []
+    # for i, prompt in enumerate(thread_prompts):
+    #     try:
+    #         response = openai_client.chat.completions.create(
+    #             model="gpt-4o-mini",
+    #             messages=[
+    #                 {"role": "system", "content": "You create viral Twitter threads that drive engagement from business professionals and decision-makers."},
+    #                 {"role": "user", "content": prompt}
+    #             ],
+    #             max_tokens=100,
+    #             temperature=0.8
+    #         )
+    #         thread_parts.append(response.choices[0].message.content.strip())
+    #         time.sleep(1)  # Avoid rate limits on OpenAI
+    #     except Exception as e:
+    #         write_log(f"Thread part {i+1} generation failed: {e}")
+    #         return None
+    # 
+    # return thread_parts
 
-def post_thread_with_recovery(thread_parts, category, article_url=None):
-    """Enhanced thread posting with failure recovery and analytics"""
-    global last_thread_time
+# def post_thread_with_recovery(thread_parts, category, article_url=None):
+#     """DISABLED: Enhanced thread posting with failure recovery and analytics"""
+#     write_log("Thread posting is disabled")
+#     return False
     
-    if not thread_parts or len(thread_parts) < 2:
-        write_log("Invalid thread parts provided")
-        return False
-    
-    posted_tweets = []
-    thread_id = None
-    
-    try:
-        # Post first tweet with optimized hashtags
-        first_tweet_text = optimize_hashtags_for_reach(thread_parts[0], category)
-        if article_url:
-            short_url = shorten_url_with_fallback(article_url)
-            first_tweet_text += f"\n\n{short_url}"
-        
-        first_tweet = twitter_client.create_tweet(text=first_tweet_text)
-        thread_id = first_tweet.data['id']
-        posted_tweets.append(first_tweet.data)
-        write_log(f"Posted thread starter: {thread_id}")
-        
-        # Post replies with exponential backoff
-        for i, part in enumerate(thread_parts[1:], 1):
-            wait_time = min(30 * (1.5 ** i), 120)  # Progressive delay, cap at 15s
-            time.sleep(wait_time)
-            
-            optimized_part = optimize_hashtags_for_reach(part, category)
-            
-            reply = twitter_client.create_tweet(
-                text=optimized_part,
-                in_reply_to_tweet_id=posted_tweets[-1]['id']
-            )
-            posted_tweets.append(reply.data)
-            write_log(f"Posted thread part {i+1}")
-        
-        # Log thread performance for analytics
-        log_thread_performance(thread_id, category, len(thread_parts))
-        last_thread_time = datetime.now(pytz.UTC)
-        
-        write_log(f"Thread posted successfully: {len(posted_tweets)} parts")
-        return True
-        
-    except Exception as e:
-        write_log(f"Thread posting failed at part {len(posted_tweets)+1}: {e}")
-        
-        # If we have partial thread, log for manual review
-        if posted_tweets:
-            write_log(f"Partial thread posted - first tweet ID: {thread_id}")
-            
-        return len(posted_tweets) > 0
+    # Original function commented out
+    # global last_thread_time
+    # 
+    # if not thread_parts or len(thread_parts) < 2:
+    #     write_log("Invalid thread parts provided")
+    #     return False
+    # 
+    # posted_tweets = []
+    # thread_id = None
+    # 
+    # try:
+    #     # Post first tweet with optimized hashtags
+    #     first_tweet_text = optimize_hashtags_for_reach(thread_parts[0], category)
+    #     if article_url:
+    #         short_url = shorten_url_with_fallback(article_url)
+    #         first_tweet_text += f"\n\n{short_url}"
+    #     
+    #     first_tweet = twitter_client.create_tweet(text=first_tweet_text)
+    #     thread_id = first_tweet.data['id']
+    #     posted_tweets.append(first_tweet.data)
+    #     write_log(f"Posted thread starter: {thread_id}")
+    #     
+    #     # Post replies with exponential backoff
+    #     for i, part in enumerate(thread_parts[1:], 1):
+    #         wait_time = min(30 * (1.5 ** i), 120)  # Progressive delay, cap at 15s
+    #         time.sleep(wait_time)
+    #         
+    #         optimized_part = optimize_hashtags_for_reach(part, category)
+    #         
+    #         reply = twitter_client.create_tweet(
+    #             text=optimized_part,
+    #             in_reply_to_tweet_id=posted_tweets[-1]['id']
+    #         )
+    #         posted_tweets.append(reply.data)
+    #         write_log(f"Posted thread part {i+1}")
+    #     
+    #     # Log thread performance for analytics
+    #     log_thread_performance(thread_id, category, len(thread_parts))
+    #     last_thread_time = datetime.now(pytz.UTC)
+    #     
+    #     write_log(f"Thread posted successfully: {len(posted_tweets)} parts")
+    #     return True
+    #     
+    # except Exception as e:
+    #     write_log(f"Thread posting failed at part {len(posted_tweets)+1}: {e}")
+    #     
+    #     # If we have partial thread, log for manual review
+    #     if posted_tweets:
+    #         write_log(f"Partial thread posted - first tweet ID: {thread_id}")
+    #         
+    #     return len(posted_tweets) > 0
 
 def log_thread_performance(thread_id, category, parts_count):
     """Log thread performance for analytics"""
@@ -578,24 +590,13 @@ def create_poll_tweet(category, topic, article_url=None):
 def choose_content_format(title, category, article_content="", article_url=None):
     """Decide whether to post thread, poll, or single tweet based on content and timing"""
     
-    # Check if threads are allowed
-    thread_eligible = can_post_thread() and should_create_thread(title, article_content)
+    # THREADS DISABLED - always skip thread logic
+    write_log("Threading is disabled - using single tweet format")
     
-    # Check if it's premium time (much more likely to do threads for professionals)
-    if is_premium_posting_time():
-        thread_eligible = thread_eligible or (random.random() < 0.5)  # 50% chance during premium hours
-        write_log(f"Premium time detected - thread eligible: {thread_eligible}")
+    # 10% chance for polls on any content (if URL available)
+    poll_chance = random.random() < 0.1 and article_url
     
-    # 10% chance for polls on any content
-    poll_chance = random.random() < 0.1
-    
-    if thread_eligible and not poll_chance:
-        write_log(f"Creating thread for: {title[:50]}...")
-        thread_parts = create_thread_content(title, category, article_content)
-        if thread_parts:
-            return "thread", thread_parts
-    
-    elif poll_chance and article_url:
+    if poll_chance:
         write_log(f"Creating poll for: {title[:50]}...")
         poll_content = create_poll_tweet(category, title, article_url)
         return "poll", poll_content
@@ -869,8 +870,32 @@ Write ONLY the tweet text, no quotes or explanations:"""
 # ENHANCED POSTING SYSTEM
 # =========================
 
+def test_twitter_connection():
+    """Test Twitter API connection with detailed debugging"""
+    try:
+        write_log("Testing Twitter API connection...")
+        
+        # Test API v1.1 (tweepy.API)
+        try:
+            me = twitter_api.verify_credentials()
+            write_log(f"API v1.1 authenticated successfully as: @{me.screen_name}")
+        except Exception as e:
+            write_log(f"API v1.1 authentication failed: {e}")
+        
+        # Test API v2 (tweepy.Client)
+        try:
+            me = twitter_client.get_me()
+            write_log(f"API v2 authenticated successfully as: {me.data.username}")
+        except Exception as e:
+            write_log(f"API v2 authentication failed: {e}")
+            
+        return True
+    except Exception as e:
+        write_log(f"Twitter connection test failed: {e}")
+        return False
+
 def post_enhanced_content(content_type, content_data, category, article_url=None):
-    """Post content based on type (single, thread, poll)"""
+    """Post content based on type (single, thread, poll) - THREADS DISABLED"""
     global last_post_time
     
     if not can_post_now():
@@ -879,14 +904,22 @@ def post_enhanced_content(content_type, content_data, category, article_url=None
     
     try:
         if content_type == "thread":
-            success = post_thread_with_recovery(content_data, category, article_url)
-        elif content_type == "poll":
+            write_log("Thread posting is disabled - converting to single tweet")
+            # Convert first thread part to single tweet
+            if isinstance(content_data, list) and content_data:
+                content_data = content_data[0]
+            content_type = "single"
+        
+        if content_type == "poll":
             # Note: Twitter API v2 polls require different handling
             # For now, post as regular tweet with poll-like content
             tweet_text = validate_tweet_length(content_data)
-            twitter_client.create_tweet(text=tweet_text)
+            
+            write_log(f"Attempting to post poll-style tweet: {tweet_text[:50]}...")
+            result = twitter_client.create_tweet(text=tweet_text)
+            write_log(f"Posted poll-style content successfully: {result.data['id']}")
             success = True
-            write_log(f"Posted poll-style content")
+            
         else:  # single tweet
             tweet_text = content_data
             if article_url:
@@ -896,9 +929,12 @@ def post_enhanced_content(content_type, content_data, category, article_url=None
             tweet_text = optimize_hashtags_for_reach(tweet_text, category)
             tweet_text = validate_tweet_length(tweet_text)
             
-            twitter_client.create_tweet(text=tweet_text)
+            write_log(f"Attempting to post single tweet: {tweet_text[:50]}...")
+            write_log(f"Full tweet text ({len(tweet_text)} chars): {tweet_text}")
+            
+            result = twitter_client.create_tweet(text=tweet_text)
+            write_log(f"Posted single tweet successfully: {result.data['id']}")
             success = True
-            write_log(f"Posted enhanced single tweet")
         
         if success:
             last_post_time = datetime.now(pytz.UTC)
@@ -906,12 +942,19 @@ def post_enhanced_content(content_type, content_data, category, article_url=None
             
     except Exception as e:
         error_msg = str(e)
+        write_log(f"Error posting content: {e}")
+        write_log(f"Error type: {type(e)}")
+        
         if "429" in error_msg or "rate limit" in error_msg.lower():
-            write_log(f"Rate limit hit. Will try again on next scheduled run.")
+            write_log("Rate limit hit. Will try again on next scheduled run.")
         elif "duplicate" in error_msg.lower():
             write_log("Duplicate tweet detected. Skipping...")
+        elif "403" in error_msg or "forbidden" in error_msg.lower():
+            write_log("403 Forbidden - Check API permissions and authentication")
+            # Test connection when we get 403
+            test_twitter_connection()
         else:
-            write_log(f"Error posting content: {e}")
+            write_log(f"Unexpected error posting content: {e}")
         return False
     
     return False
@@ -921,7 +964,7 @@ def post_enhanced_content(content_type, content_data, category, article_url=None
 # =========================
 
 def post_dynamic_update_enhanced(category, trend_term=None):
-    """Enhanced posting with threading, premium targeting, and growth features"""
+    """Enhanced posting with threading disabled, premium targeting, and growth features"""
     
     # Check rate limiting first
     if not can_post_now():
@@ -954,7 +997,7 @@ def post_dynamic_update_enhanced(category, trend_term=None):
         # Extract article content for better context
         article_content = extract_article_content(article["url"])
         
-        # Choose content format based on content and timing
+        # Choose content format based on content and timing (threads disabled)
         content_type, content_data = choose_content_format(
             article["title"], 
             category, 
@@ -1042,7 +1085,7 @@ def should_post_now():
     return result
 
 def run_enhanced_job():
-    """Enhanced job runner with all new features"""
+    """Enhanced job runner with all new features (threads disabled)"""
     try:
         if not can_post_now():
             write_log("Still rate limited from previous posts - skipping this run")
@@ -1050,7 +1093,7 @@ def run_enhanced_job():
             
         write_log("Starting enhanced dynamic job...")
         write_log(f"Premium time: {is_premium_posting_time()}")
-        write_log(f"Thread available: {can_post_thread()}")
+        write_log(f"Thread available: False (disabled)")
         
         category, trend_term = detect_category_from_trends()
         success = post_dynamic_update_enhanced(category, trend_term)
@@ -1077,7 +1120,7 @@ def start_enhanced_scheduler():
     """Enhanced scheduler with premium time awareness"""
     write_log("Starting enhanced scheduler...")
     write_log(f"Rate limiting: {DAILY_POST_LIMIT} posts/day, {POST_INTERVAL_MINUTES}min intervals")
-    write_log(f"Thread cooldown: {THREAD_COOLDOWN_HOURS} hours")
+    write_log(f"Threading: DISABLED")
     
     all_times = sorted(PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES)
     write_log(f"Scheduled times: {all_times}")
@@ -1116,13 +1159,13 @@ class HealthHandler(BaseHTTPRequestHandler):
         status = f"""Enhanced Twitter Bot Status: RUNNING
         
 Features Active:
-- Threading: {can_post_thread()}
+- Threading: DISABLED
 - Premium Targeting: {is_premium_posting_time()}
 - Growth Acceleration: Enabled
 - Rate Limiting: {can_post_now()}
 
 Last Post: {last_post_time or 'Never'}
-Last Thread: {last_thread_time or 'Never'}
+Last Thread: DISABLED
         """
         self.wfile.write(status.encode())
     
@@ -1160,14 +1203,17 @@ def test_enhanced_features():
     optimized = optimize_hashtags_for_reach(test_tweet, "F1")
     write_log(f"Hashtag optimization test: {optimized}")
     
-    # Test thread detection
+    # Test thread detection (should be disabled)
     test_title = "Breaking: Major investigation reveals significant changes in Formula 1 regulations"
     thread_worthy = should_create_thread(test_title)
-    write_log(f"Thread detection test: {thread_worthy}")
+    write_log(f"Thread detection test (should be False): {thread_worthy}")
     
     # Test content format selection
     content_type, content_data = choose_content_format(test_title, "F1")
     write_log(f"Content format selection: {content_type}")
+    
+    # Test Twitter connection
+    test_twitter_connection()
     
     write_log("=== ENHANCED FEATURES TEST COMPLETE ===")
 
@@ -1180,7 +1226,7 @@ def test_single_enhanced_post(category=None):
     
     write_log(f"Testing enhanced post for category: {category}")
     write_log(f"Premium time: {is_premium_posting_time()}")
-    write_log(f"Thread available: {can_post_thread()}")
+    write_log(f"Thread available: False (disabled)")
     
     return post_dynamic_update_enhanced(category, trend_term)
 
@@ -1201,7 +1247,7 @@ def test_auth():
 # =========================
 
 if __name__ == "__main__":
-    write_log("=== ENHANCED TWITTER BOT STARTUP ===")
+    write_log("=== ENHANCED TWITTER BOT STARTUP (THREADS DISABLED) ===")
     
     # Validate environment
     validate_env_vars()
@@ -1212,11 +1258,11 @@ if __name__ == "__main__":
         exit(1)
     
     write_log("=== ENHANCED FEATURES INITIALIZED ===")
-    write_log("✓ Threading system active")
+    write_log("✗ Threading system DISABLED")
     write_log("✓ Premium user targeting enabled")
     write_log("✓ Growth acceleration features loaded")
     write_log("✓ Enhanced hashtag optimization ready")
-    write_log("✓ Multi-format content generation active")
+    write_log("✓ Single-format content generation active")
     
     # Start health server in background
     health_thread = threading.Thread(target=start_health_server, daemon=True)
@@ -1228,12 +1274,3 @@ if __name__ == "__main__":
     
     # Start the enhanced scheduler
     start_enhanced_scheduler()
-
-
-
-
-
-
-
-
-
