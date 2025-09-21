@@ -176,7 +176,7 @@ MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
 
 # Reply campaign times (only 3 times per day)
 REPLY_CAMPAIGN_TIMES = [
-    "10:55",  # Mid-morning
+    "11:05",  # Mid-morning
     "16:30",  # Mid-afternoon  
     "22:30",  # Late evening
 ]
@@ -509,6 +509,118 @@ class ReplyOrchestrator:
         self.generator = ReplyGenerator()
         self.daily_replies_file = "daily_replies.json"
         self.daily_reads_file = "daily_reads.json"
+        
+    def load_daily_count(self, file_name, limit_type):
+        """Load today's count for replies or reads"""
+        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
+        
+        if os.path.exists(file_name):
+            with open(file_name, 'r') as f:
+                data = json.load(f)
+                if data.get("date") == today:
+                    return data.get("count", 0)
+        
+        self.save_daily_count(file_name, 0)
+        return 0
+    
+    def save_daily_count(self, file_name, count):
+        """Save today's count"""
+        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
+        data = {"date": today, "count": count}
+        
+        with open(file_name, 'w') as f:
+            json.dump(data, f)
+    
+    def can_reply_today(self):
+        """Check daily limits"""
+        daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
+        daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
+        
+        return (daily_replies < DAILY_REPLY_LIMIT and 
+                daily_reads < DAILY_READ_LIMIT and 
+                quota_manager.can_write(1) and 
+                quota_manager.can_read(1))
+    
+    def execute_ultra_conservative_reply_campaign(self):
+        """Ultra-conservative reply strategy - prioritize keywords over mentions"""
+        if not self.can_reply_today():
+            write_log("Daily limits reached (3 reads/3 replies) or quota exhausted")
+            return
+        
+        replied_tweets = self.retriever.load_replied_tweets()
+        daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
+        daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
+        
+        # Strategy 1: Keyword searches (highest priority for growth)
+        if daily_reads < DAILY_READ_LIMIT and daily_replies < DAILY_REPLY_LIMIT:
+            # Rotate through categories - pick one per session
+            categories = list(self.generator.reply_strategies.keys())
+            selected_category = random.choice(categories)
+            keywords = self.generator.reply_strategies[selected_category]["keywords"][:2]
+            
+            write_log(f"Searching for tweets with {selected_category} keywords: {keywords}")
+            tweets = self.retriever.search_relevant_tweets(keywords, max_results=3)
+            
+            if tweets:  # Only count as read if we got results
+                daily_reads += 1
+                self.save_daily_count(self.daily_reads_file, daily_reads)
+            
+            for tweet in tweets:
+                if (tweet.id not in replied_tweets and 
+                    daily_replies < DAILY_REPLY_LIMIT and
+                    self.generator.should_reply_to_tweet(tweet)):
+                    
+                    if self.reply_to_tweet(tweet):
+                        daily_replies += 1
+                        self.save_daily_count(self.daily_replies_file, daily_replies)
+                        replied_tweets.add(tweet.id)
+                        self.retriever.save_replied_tweet(tweet.id)
+                        break  # Only one reply per campaign
+        
+        # Strategy 2: Check mentions as backup (if still have quota)
+        if daily_reads < DAILY_READ_LIMIT and daily_replies < DAILY_REPLY_LIMIT:
+            write_log("Checking mentions as backup strategy")
+            mentions = self.retriever.get_mentions(max_results=2)
+            
+            if mentions:  # Only count as read if we got results
+                daily_reads += 1
+                self.save_daily_count(self.daily_reads_file, daily_reads)
+            
+            for tweet in mentions:
+                if (tweet.id not in replied_tweets and 
+                    daily_replies < DAILY_REPLY_LIMIT and
+                    self.generator.should_reply_to_tweet(tweet)):
+                    
+                    if self.reply_to_tweet(tweet):
+                        daily_replies += 1
+                        self.save_daily_count(self.daily_replies_file, daily_replies)
+                        replied_tweets.add(tweet.id)
+                        self.retriever.save_replied_tweet(tweet.id)
+                        break
+        
+        write_log(f"Reply campaign completed. Daily usage: {daily_replies}/3 replies, {daily_reads}/3 reads")
+    
+    def reply_to_tweet(self, tweet):
+        """Reply to a specific tweet"""
+        try:
+            category = self.generator.categorize_tweet(tweet.text)
+            reply_text = self.generator.generate_reply(tweet.text, category)
+            
+            if not reply_text or not quota_manager.can_write(1):
+                return False
+            
+            response = twitter_client.create_tweet(
+                text=reply_text,
+                in_reply_to_tweet_id=tweet.id
+            )
+            
+            quota_manager.use_write(1)
+            write_log(f"Successfully replied to tweet {tweet.id}: {reply_text[:50]}...")
+            return True
+            
+        except Exception as e:
+            write_log(f"Error replying to tweet {tweet.id}: {e}")
+            return False
         
     def load_daily_count(self, file_name, limit_type):
         """Load today's count for replies or reads"""
@@ -1180,6 +1292,7 @@ if __name__ == "__main__":
     # Start the ultra-conservative scheduler
     write_log("Starting ultra-conservative scheduler...")
     start_conservative_scheduler()
+
 
 
 
