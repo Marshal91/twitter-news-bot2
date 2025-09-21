@@ -761,9 +761,11 @@ def detect_category_with_timing_strategy():
             return category
     
     # Regular random selection
-    category = random.choice(categories)
-    write_log(f"Selected category: {category}")
-    return category
+category = random.choice(categories)
+write_log(f"Selected category: {category}")
+return category
+
+def generate_content_aware_post(title, category, article_url):
     """Generate viral-worthy posts"""
     try:
         prompt = f"""Create an engaging Twitter post about: {title}
@@ -1150,6 +1152,7 @@ if __name__ == "__main__":
     # Start the ultra-conservative scheduler
     write_log("Starting ultra-conservative scheduler...")
     start_conservative_scheduler()
+
 
 
 
