@@ -1,6 +1,7 @@
 """
 Complete Enhanced Twitter Bot with Ultra-Conservative Reply System
 API Limits: 100 reads/month (3/day), 500 writes/month (12 posts + 3 replies/day)
+Enhanced with contextual CTAs and dynamic examples
 """
 
 import os
@@ -158,7 +159,6 @@ PREMIUM_POSTING_TIMES = [
     "16:00",  # Evening engagement
     "18:00",  # Prime evening time
     "22:00",  # Late night Americas
-   
 ]
 
 # Global engagement times for sports/entertainment content
@@ -228,44 +228,87 @@ RSS_FEEDS = {
     ]
 }
 
-# Premium user targeting content strategies
+# Enhanced Premium user targeting content strategies with contextual CTAs
 PREMIUM_CONTENT_STRATEGIES = {
     "EPL": {
         "focus": "Business strategy, player valuations, commercial insights",
         "tone": "Professional analysis with strategic implications",
-        "cta": "What's your take on the business side?"
+        "cta_templates": [
+            "How does this reshape the Premier League's economic landscape?",
+            "What's the ROI on this move for club stakeholders?",
+            "Which clubs are positioned to capitalize on this trend?",
+            "How will this impact broadcast revenue models?",
+            "What's your read on the market dynamics here?"
+        ]
     },
     "F1": {
         "focus": "Technology innovation, team strategies, commercial partnerships",
         "tone": "Technical expertise with business applications",
-        "cta": "How does this impact the sport's commercial future?"
+        "cta_templates": [
+            "Which team benefits most from this technical development?",
+            "How will this innovation transfer to consumer automotive?",
+            "What's the competitive advantage timeline here?",
+            "Which manufacturers are best positioned to adapt?",
+            "How does this change the cost-performance equation?"
+        ]
     },
     "Crypto": {
         "focus": "Regulatory compliance, institutional adoption, market structure",
         "tone": "Institutional-grade analysis and implications",
-        "cta": "What are the regulatory implications here?"
+        "cta_templates": [
+            "What's the regulatory precedent this sets?",
+            "How will institutional portfolios adjust to this?",
+            "Which compliance frameworks address this scenario?",
+            "What's the systemic risk assessment here?",
+            "How does this impact market structure evolution?"
+        ]
     },
     "Tesla": {
         "focus": "Innovation leadership, market disruption, investment thesis",
         "tone": "Strategic business analysis and market positioning",
-        "cta": "How does this reshape the EV landscape?"
+        "cta_templates": [
+            "What's Tesla's moat in this competitive landscape?",
+            "How does this accelerate the EV adoption curve?",
+            "Which legacy automakers face the biggest disruption?",
+            "What's the supply chain implication for investors?",
+            "How will this reshape automotive profit margins?"
+        ]
     },
     "Space Exploration": {
         "focus": "Commercial space economy, technology transfer, investment opportunities",
-        "tone": "Strategic business and technology analysis",
-        "cta": "What are the commercial implications?"
+        "tone": "Strategic business and technology analysis", 
+        "cta_templates": [
+            "Which sectors benefit from this space technology spillover?",
+            "What's the commercial viability timeline?",
+            "How does this impact the space economy valuation?",
+            "Which earthbound applications show the most promise?",
+            "What's the geopolitical competitive advantage here?"
+        ]
     },
     "Cycling": {
         "focus": "Sports business, technology innovation, market trends",
         "tone": "Industry analysis and business perspective",
-        "cta": "How does this change the sport's business model?"
+        "cta_templates": [
+            "How will this technology disrupt the cycling industry?",
+            "What's the market opportunity for equipment manufacturers?",
+            "Which demographic trends does this capitalize on?",
+            "How does this impact sponsorship valuations?",
+            "What's the consumer adoption pathway here?"
+        ]
     },
     "MotoGP": {
         "focus": "Technology transfer, commercial partnerships, market impact",
         "tone": "Technical and business analysis",
-        "cta": "What's the broader industry impact?"
+        "cta_templates": [
+            "Which motorcycle manufacturers gain competitive edge?",
+            "How will this tech transfer to consumer bikes?",
+            "What's the safety ROI for the racing investment?",
+            "Which partnerships are positioned to scale this?",
+            "How does this reshape performance benchmarks?"
+        ]
     }
 }
+
 TRENDING_HASHTAGS = {
     "EPL": {
         "primary": ["#PremierLeague", "#EPL", "#Football"],
@@ -345,7 +388,92 @@ def write_log(message, level="info"):
         logging.info(message)
 
 # =========================
-# REPLY SYSTEM COMPONENTS
+# ENHANCED CONTENT STRATEGIES
+# =========================
+
+def get_contextual_cta(category, title):
+    """Generate contextual CTA based on article content"""
+    strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
+    if not strategy or not strategy.get("cta_templates"):
+        return "What's your take on this development?"
+    
+    # Simple keyword matching to select most relevant CTA
+    title_lower = title.lower()
+    cta_templates = strategy["cta_templates"]
+    
+    # Priority keywords for CTA selection
+    cta_keywords = {
+        0: ["partnership", "deal", "merger", "acquisition", "investment"],
+        1: ["technology", "innovation", "breakthrough", "development", "tech"],
+        2: ["market", "competition", "competitor", "industry", "business"],
+        3: ["regulation", "policy", "compliance", "legal", "government"],
+        4: ["financial", "revenue", "profit", "economic", "cost", "pricing"]
+    }
+    
+    # Find best matching CTA based on content
+    for i, keywords in cta_keywords.items():
+        if any(keyword in title_lower for keyword in keywords) and i < len(cta_templates):
+            return cta_templates[i]
+    
+    # Fallback to random selection from available CTAs
+    return random.choice(cta_templates)
+
+def get_example_openers(category):
+    """Get category-specific example openers"""
+    examples = {
+        "EPL": [
+            "Financial Fair Play data reveals...",
+            "Transfer market analysis shows...", 
+            "Commercial performance indicates...",
+            "Revenue projections suggest..."
+        ],
+        "F1": [
+            "Aerodynamic regulations reshape...",
+            "Technical partnerships indicate...",
+            "Performance data suggests...",
+            "Innovation cycles show..."
+        ],
+        "Crypto": [
+            "Institutional flow patterns reveal...",
+            "Regulatory frameworks suggest...",
+            "Market structure analysis shows...",
+            "Adoption metrics indicate..."
+        ],
+        "Tesla": [
+            "Manufacturing efficiency data shows...",
+            "Market positioning analysis reveals...",
+            "Supply chain indicators suggest...",
+            "Innovation pipeline indicates..."
+        ],
+        "Space Exploration": [
+            "Commercial viability studies show...",
+            "Technology transfer patterns reveal...",
+            "Mission economics suggest...",
+            "Industry partnerships indicate..."
+        ],
+        "Cycling": [
+            "Performance analytics reveal...",
+            "Equipment innovation data shows...",
+            "Sponsorship metrics suggest...",
+            "Market trend analysis indicates..."
+        ],
+        "MotoGP": [
+            "Technical development cycles show...",
+            "Safety innovation data reveals...",
+            "Manufacturer partnerships indicate...",
+            "Performance benchmarks suggest..."
+        ]
+    }
+    
+    return examples.get(category, [
+        "Market implications suggest...",
+        "Strategic analysis reveals...",
+        "Industry data shows...",
+        "Performance metrics indicate..."
+    ])
+
+# =========================
+# REPLY SYSTEM COMPONENTS (TEMPORARILY DISABLED)
 # =========================
 
 class TweetRetriever:
@@ -363,54 +491,6 @@ class TweetRetriever:
         """Save tweet ID to avoid duplicate replies"""
         with open(self.replied_tweets_file, 'a') as f:
             f.write(f"{tweet_id}\n")
-    
-    def get_mentions(self, max_results=3):
-        """Get recent mentions (ultra-conservative)"""
-        if not quota_manager.can_read(1):
-            write_log("Read quota exhausted - cannot get mentions")
-            return []
-        
-        try:
-            me = twitter_client.get_me()
-            response = twitter_client.get_users_mentions(
-                id=me.data.id,
-                max_results=max_results,
-                tweet_fields=['author_id', 'created_at', 'public_metrics']
-            )
-            
-            quota_manager.use_read(1)
-            write_log(f"Retrieved {len(response.data) if response.data else 0} mentions")
-            
-            return response.data if response.data else []
-            
-        except Exception as e:
-            write_log(f"Error getting mentions: {e}")
-            return []
-    
-    def search_relevant_tweets(self, keywords, max_results=3):
-        """Search for tweets (ultra-conservative)"""
-        if not quota_manager.can_read(1):
-            write_log("Read quota exhausted - cannot search tweets")
-            return []
-        
-        try:
-            query = " OR ".join([f'"{keyword}"' for keyword in keywords[:2]])  # Max 2 keywords
-            query += " -is:retweet -is:reply lang:en"
-            
-            response = twitter_client.search_recent_tweets(
-                query=query,
-                max_results=max_results,
-                tweet_fields=['author_id', 'created_at', 'public_metrics']
-            )
-            
-            quota_manager.use_read(1)
-            write_log(f"Retrieved {len(response.data) if response.data else 0} tweets for keywords")
-            
-            return response.data if response.data else []
-            
-        except Exception as e:
-            write_log(f"Error searching tweets: {e}")
-            return []
 
 class ReplyGenerator:
     def __init__(self):
@@ -436,72 +516,6 @@ class ReplyGenerator:
                 "tone": "space tech fan"
             }
         }
-    
-    def categorize_tweet(self, tweet_text):
-        """Determine the category of a tweet"""
-        tweet_lower = tweet_text.lower()
-        
-        for category, data in self.reply_strategies.items():
-            if any(keyword in tweet_lower for keyword in data["keywords"]):
-                return category
-        
-        return "General"
-    
-    def should_reply_to_tweet(self, tweet):
-        """Ultra-selective reply criteria"""
-        if not tweet.public_metrics:
-            return False
-            
-        likes = tweet.public_metrics.get('like_count', 0)
-        retweets = tweet.public_metrics.get('retweet_count', 0)
-        
-        # Very selective engagement threshold
-        if likes + retweets < 5 or likes + retweets > 500:
-            return False
-        
-        # Only recent tweets
-        if tweet.created_at:
-            tweet_age = datetime.now(pytz.UTC) - tweet.created_at.replace(tzinfo=pytz.UTC)
-            if tweet_age > timedelta(hours=12):
-                return False
-        
-        return True
-    
-    def generate_reply(self, tweet_text, category):
-        """Generate a thoughtful reply"""
-        strategy = self.reply_strategies.get(category, {"tone": "helpful"})
-        
-        prompt = f"""Reply to: "{tweet_text}"
-
-Create a {strategy.get('tone')} reply that:
-- Adds genuine value to the conversation
-- Shows knowledge without being pushy
-- Asks a thoughtful question OR provides insight
-- Is under 240 characters
-- Feels natural and conversational
-
-Write ONLY the reply text:"""
-        
-        try:
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Create engaging, valuable Twitter replies."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=80,
-                temperature=0.7
-            )
-            
-            reply = response.choices[0].message.content.strip()
-            if reply.startswith('"') and reply.endswith('"'):
-                reply = reply[1:-1]
-            
-            return reply
-            
-        except Exception as e:
-            write_log(f"Error generating reply: {e}")
-            return None
 
 class ReplyOrchestrator:
     def __init__(self):
@@ -510,232 +524,13 @@ class ReplyOrchestrator:
         self.daily_replies_file = "daily_replies.json"
         self.daily_reads_file = "daily_reads.json"
         
-    def load_daily_count(self, file_name, limit_type):
-        """Load today's count for replies or reads"""
-        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
-        
-        if os.path.exists(file_name):
-            with open(file_name, 'r') as f:
-                data = json.load(f)
-                if data.get("date") == today:
-                    return data.get("count", 0)
-        
-        self.save_daily_count(file_name, 0)
-        return 0
-    
-    def save_daily_count(self, file_name, count):
-        """Save today's count"""
-        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
-        data = {"date": today, "count": count}
-        
-        with open(file_name, 'w') as f:
-            json.dump(data, f)
-    
-    def can_reply_today(self):
-        """Check daily limits"""
-        daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
-        daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
-        
-        return (daily_replies < DAILY_REPLY_LIMIT and 
-                daily_reads < DAILY_READ_LIMIT and 
-                quota_manager.can_write(1) and 
-                quota_manager.can_read(1))
-    
     def execute_ultra_conservative_reply_campaign(self):
-        """Ultra-conservative reply strategy - prioritize keywords over mentions"""
-        if not self.can_reply_today():
-            write_log("Daily limits reached (3 reads/3 replies) or quota exhausted")
-            return
-        
-        replied_tweets = self.retriever.load_replied_tweets()
-        daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
-        daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
-        
-        # Strategy 1: Keyword searches (highest priority for growth)
-        if daily_reads < DAILY_READ_LIMIT and daily_replies < DAILY_REPLY_LIMIT:
-            # Rotate through categories - pick one per session
-            categories = list(self.generator.reply_strategies.keys())
-            selected_category = random.choice(categories)
-            keywords = self.generator.reply_strategies[selected_category]["keywords"][:2]
-            
-            write_log(f"Searching for tweets with {selected_category} keywords: {keywords}")
-            tweets = self.retriever.search_relevant_tweets(keywords, max_results=3)
-            
-            if tweets:  # Only count as read if we got results
-                daily_reads += 1
-                self.save_daily_count(self.daily_reads_file, daily_reads)
-            
-            for tweet in tweets:
-                if (tweet.id not in replied_tweets and 
-                    daily_replies < DAILY_REPLY_LIMIT and
-                    self.generator.should_reply_to_tweet(tweet)):
-                    
-                    if self.reply_to_tweet(tweet):
-                        daily_replies += 1
-                        self.save_daily_count(self.daily_replies_file, daily_replies)
-                        replied_tweets.add(tweet.id)
-                        self.retriever.save_replied_tweet(tweet.id)
-                        break  # Only one reply per campaign
-        
-        # Strategy 2: Check mentions as backup (if still have quota)
-        if daily_reads < DAILY_READ_LIMIT and daily_replies < DAILY_REPLY_LIMIT:
-            write_log("Checking mentions as backup strategy")
-            mentions = self.retriever.get_mentions(max_results=2)
-            
-            if mentions:  # Only count as read if we got results
-                daily_reads += 1
-                self.save_daily_count(self.daily_reads_file, daily_reads)
-            
-            for tweet in mentions:
-                if (tweet.id not in replied_tweets and 
-                    daily_replies < DAILY_REPLY_LIMIT and
-                    self.generator.should_reply_to_tweet(tweet)):
-                    
-                    if self.reply_to_tweet(tweet):
-                        daily_replies += 1
-                        self.save_daily_count(self.daily_replies_file, daily_replies)
-                        replied_tweets.add(tweet.id)
-                        self.retriever.save_replied_tweet(tweet.id)
-                        break
-        
-        write_log(f"Reply campaign completed. Daily usage: {daily_replies}/3 replies, {daily_reads}/3 reads")
-    
-    def reply_to_tweet(self, tweet):
-        """Reply to a specific tweet"""
-        try:
-            category = self.generator.categorize_tweet(tweet.text)
-            reply_text = self.generator.generate_reply(tweet.text, category)
-            
-            if not reply_text or not quota_manager.can_write(1):
-                return False
-            
-            response = twitter_client.create_tweet(
-                text=reply_text,
-                in_reply_to_tweet_id=tweet.id
-            )
-            
-            quota_manager.use_write(1)
-            write_log(f"Successfully replied to tweet {tweet.id}: {reply_text[:50]}...")
-            return True
-            
-        except Exception as e:
-            write_log(f"Error replying to tweet {tweet.id}: {e}")
-            return False
-        
-    def load_daily_count(self, file_name, limit_type):
-        """Load today's count for replies or reads"""
-        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
-        
-        if os.path.exists(file_name):
-            with open(file_name, 'r') as f:
-                data = json.load(f)
-                if data.get("date") == today:
-                    return data.get("count", 0)
-        
-        self.save_daily_count(file_name, 0)
-        return 0
-    
-    def save_daily_count(self, file_name, count):
-        """Save today's count"""
-        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
-        data = {"date": today, "count": count}
-        
-        with open(file_name, 'w') as f:
-            json.dump(data, f)
-    
-    def can_reply_today(self):
-        """Check daily limits"""
-        daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
-        daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
-        
-        return (daily_replies < DAILY_REPLY_LIMIT and 
-                daily_reads < DAILY_READ_LIMIT and 
-                quota_manager.can_write(1) and 
-                quota_manager.can_read(1))
-    
-def execute_ultra_conservative_reply_campaign(self):
-    """Ultra-conservative reply strategy - prioritize keywords over mentions"""
-    if not self.can_reply_today():
-        write_log("Daily limits reached (3 reads/3 replies) or quota exhausted")
+        """DISABLED: Reply campaign temporarily disabled due to API permissions"""
+        write_log("Reply campaigns temporarily disabled - focusing on main content strategy")
         return
-    
-    replied_tweets = self.retriever.load_replied_tweets()
-    daily_replies = self.load_daily_count(self.daily_replies_file, "replies")
-    daily_reads = self.load_daily_count(self.daily_reads_file, "reads")
-    
-    # Strategy 1: Keyword searches (highest priority for growth)
-    if daily_reads < DAILY_READ_LIMIT and daily_replies < DAILY_REPLY_LIMIT:
-        # Rotate through categories - pick one per session
-        categories = list(self.generator.reply_strategies.keys())
-        selected_category = random.choice(categories)
-        keywords = self.generator.reply_strategies[selected_category]["keywords"][:2]
-        
-        write_log(f"Searching for tweets with {selected_category} keywords: {keywords}")
-        tweets = self.retriever.search_relevant_tweets(keywords, max_results=3)
-        
-        if tweets:  # Only count as read if we got results
-            daily_reads += 1
-            self.save_daily_count(self.daily_reads_file, daily_reads)
-        
-        for tweet in tweets:
-            if (tweet.id not in replied_tweets and 
-                daily_replies < DAILY_REPLY_LIMIT and
-                self.generator.should_reply_to_tweet(tweet)):
-                
-                if self.reply_to_tweet(tweet):
-                    daily_replies += 1
-                    self.save_daily_count(self.daily_replies_file, daily_replies)
-                    replied_tweets.add(tweet.id)
-                    self.retriever.save_replied_tweet(tweet.id)
-                    break  # Only one reply per campaign
-    
-    # Strategy 2: Check mentions as backup (if still have quota)
-    if daily_reads < DAILY_READ_LIMIT and daily_replies < DAILY_REPLY_LIMIT:
-        write_log("Checking mentions as backup strategy")
-        mentions = self.retriever.get_mentions(max_results=2)
-        
-        if mentions:  # Only count as read if we got results
-            daily_reads += 1
-            self.save_daily_count(self.daily_reads_file, daily_reads)
-        
-        for tweet in mentions:
-            if (tweet.id not in replied_tweets and 
-                daily_replies < DAILY_REPLY_LIMIT and
-                self.generator.should_reply_to_tweet(tweet)):
-                
-                if self.reply_to_tweet(tweet):
-                    daily_replies += 1
-                    self.save_daily_count(self.daily_replies_file, daily_replies)
-                    replied_tweets.add(tweet.id)
-                    self.retriever.save_replied_tweet(tweet.id)
-                    break
-    
-    write_log(f"Reply campaign completed. Daily usage: {daily_replies}/3 replies, {daily_reads}/3 reads")
-    
-    def reply_to_tweet(self, tweet):
-        """Reply to a specific tweet"""
-        try:
-            category = self.generator.categorize_tweet(tweet.text)
-            reply_text = self.generator.generate_reply(tweet.text, category)
-            
-            if not reply_text or not quota_manager.can_write(1):
-                return False
-            
-            response = twitter_client.create_tweet(
-                text=reply_text,
-                in_reply_to_tweet_id=tweet.id
-            )
-            
-            quota_manager.use_write(1)
-            write_log(f"Successfully replied to tweet {tweet.id}: {reply_text[:50]}...")
-            return True
-            
-        except Exception as e:
-            write_log(f"Error replying to tweet {tweet.id}: {e}")
-            return False
 
 # =========================
-# MAIN CONTENT POSTING (From Original)
+# MAIN CONTENT POSTING (Enhanced)
 # =========================
 
 def validate_env_vars():
@@ -831,14 +626,18 @@ def should_use_global_strategy(category):
     return category in GLOBAL_CATEGORIES or is_global_posting_time()
 
 def generate_premium_targeted_content(title, category, article_url):
-    """Generate content specifically appealing to Premium subscribers and professionals"""
-    
+    """Generate content with contextual CTA and dynamic examples"""
     strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
     if not strategy:
-        # Fallback to regular content generation
         return generate_content_aware_post(title, category, article_url)
     
-    # Enhanced prompt for premium demographics
+    # Get contextual CTA instead of generic one
+    contextual_cta = get_contextual_cta(category, title)
+    
+    # Get dynamic examples
+    example_openers = get_example_openers(category)
+    examples_text = "\n".join([f"- \"{opener}\"" for opener in example_openers])
+    
     prompt = f"""Create a Twitter post about: {title}
 
 Target Audience: Business professionals, decision-makers, industry experts
@@ -850,15 +649,12 @@ Requirements:
 - Appeal to professionals and decision-makers
 - Focus on strategic implications and business insights
 - Include data-driven analysis angles
-- End with thought-provoking question: {strategy['cta']}
+- End with this specific question: {contextual_cta}
 - Under 200 characters (leave room for URL and hashtags)
 - Avoid buzzwords, focus on substance
 
 Examples for {category}:
-- "Market implications suggest..."
-- "Strategic analysis reveals..."
-- "Industry data shows..."
-- "This reshapes how we think about..."
+{examples_text}
 
 Write ONLY the tweet text:"""
 
@@ -1021,9 +817,8 @@ def should_post_main_content():
     return current_time in MAIN_POSTING_TIMES
 
 def should_run_reply_campaign():
-    """Check if it's time for reply campaign"""
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in REPLY_CAMPAIGN_TIMES
+    """Check if it's time for reply campaign - TEMPORARILY DISABLED"""
+    return False  # Disabled due to API permission issues
 
 def run_main_content_job():
     """Run main content posting job with strategic timing"""
@@ -1055,12 +850,11 @@ def run_main_content_job():
         write_log(f"Error in main content job: {e}")
 
 def run_reply_job():
-    """Run reply campaign job"""
+    """Reply campaign job - TEMPORARILY DISABLED"""
     try:
-        write_log("Starting ultra-conservative reply campaign...")
+        write_log("Reply campaigns temporarily disabled - focusing on main content")
         reply_orchestrator = ReplyOrchestrator()
         reply_orchestrator.execute_ultra_conservative_reply_campaign()
-        write_log("Reply campaign completed")
     except Exception as e:
         write_log(f"Error in reply campaign: {e}")
 
@@ -1069,7 +863,7 @@ def start_conservative_scheduler():
     write_log("Starting ultra-conservative scheduler with strategic timing...")
     write_log(f"Premium posting times (business focus): {PREMIUM_POSTING_TIMES}")
     write_log(f"Global posting times (sports/entertainment): {GLOBAL_POSTING_TIMES}")
-    write_log(f"Reply campaign times (3/day): {REPLY_CAMPAIGN_TIMES}")
+    write_log(f"Reply campaign times (DISABLED): {REPLY_CAMPAIGN_TIMES}")
     write_log(f"Business categories: {BUSINESS_CATEGORIES}")
     write_log(f"Global categories: {GLOBAL_CATEGORIES}")
     
@@ -1083,7 +877,7 @@ def start_conservative_scheduler():
             current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
             
             if current_minute != last_checked_minute:
-                write_log(f"Checking time: {current_minute} against {len(MAIN_POSTING_TIMES + REPLY_CAMPAIGN_TIMES)} scheduled times")
+                write_log(f"Checking time: {current_minute} against {len(MAIN_POSTING_TIMES)} scheduled times")
                 
                 # Check for main content posting
                 if should_post_main_content():
@@ -1091,10 +885,10 @@ def start_conservative_scheduler():
                     write_log(f"{timing_type} content time: {current_minute}")
                     run_main_content_job()
                 
-                # Check for reply campaigns
-                elif should_run_reply_campaign():
-                    write_log(f"Reply campaign time: {current_minute}")
-                    run_reply_job()
+                # Reply campaigns disabled
+                # elif should_run_reply_campaign():
+                #     write_log(f"Reply campaign time: {current_minute}")
+                #     run_reply_job()
                 
                 last_checked_minute = current_minute
                 
@@ -1115,7 +909,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         
         quota_status = quota_manager.get_quota_status()
-        status = f"""Ultra-Conservative Twitter Bot Status: RUNNING
+        status = f"""Enhanced Twitter Bot Status: RUNNING
 
 Monthly Quota:
 - Reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)
@@ -1123,12 +917,14 @@ Monthly Quota:
 
 Daily Allocation:
 - Main Posts: 12/day (360/month)
-- Replies: 3/day (90/month)
+- Replies: DISABLED (API permissions)
 - Emergency Buffer: 50/month
 
-Features:
-- Threading: DISABLED
-- Conservative Reply System: ENABLED
+Enhanced Features:
+- Contextual CTAs: ACTIVE
+- Dynamic Examples: ACTIVE
+- Premium Targeting: ACTIVE
+- Strategic Timing: ACTIVE
 - Smart Quota Management: ACTIVE
 
 Last Post: {last_post_time or 'Never'}
@@ -1157,10 +953,42 @@ def start_health_server():
 # TESTING FUNCTIONS
 # =========================
 
+def test_contextual_cta():
+    """Test contextual CTA generation"""
+    write_log("=== TESTING CONTEXTUAL CTA SYSTEM ===")
+    
+    test_cases = [
+        ("Crypto", "Bitcoin ETF Partnership with Major Bank"),
+        ("F1", "Revolutionary Aerodynamic Technology Breakthrough"),
+        ("Tesla", "Q3 Financial Results Show Record Profits"),
+        ("EPL", "New Broadcasting Deal Regulation Announced")
+    ]
+    
+    for category, title in test_cases:
+        cta = get_contextual_cta(category, title)
+        examples = get_example_openers(category)
+        write_log(f"{category} - '{title}' -> CTA: {cta}")
+        write_log(f"Examples: {examples[:2]}")
+    
+    write_log("=== CONTEXTUAL CTA TEST COMPLETE ===")
+
+def test_premium_content_generation():
+    """Test premium content generation with new system"""
+    write_log("=== TESTING PREMIUM CONTENT GENERATION ===")
+    
+    test_title = "Tesla Announces Major Manufacturing Partnership"
+    test_category = "Tesla"
+    test_url = "https://example.com/tesla-news"
+    
+    content = generate_premium_targeted_content(test_title, test_category, test_url)
+    write_log(f"Generated content: {content}")
+    
+    write_log("=== PREMIUM CONTENT TEST COMPLETE ===")
+
 def test_quota_system():
     """Test quota management system"""
     write_log("=== TESTING QUOTA SYSTEM ===")
-    status = quota_manager.get_quota_status()
+    status = quota_status = quota_manager.get_quota_status()
     write_log(f"Current quota: {status}")
     
     # Test read quota
@@ -1172,22 +1000,6 @@ def test_quota_system():
     write_log(f"Can write (1): {can_write}")
     
     write_log("=== QUOTA TEST COMPLETE ===")
-
-def test_reply_system():
-    """Test reply system without using quota"""
-    write_log("=== TESTING REPLY SYSTEM ===")
-    
-    orchestrator = ReplyOrchestrator()
-    
-    # Test daily limits
-    daily_replies = orchestrator.load_daily_count(orchestrator.daily_replies_file, "replies")
-    daily_reads = orchestrator.load_daily_count(orchestrator.daily_reads_file, "reads")
-    
-    write_log(f"Daily replies used: {daily_replies}/3")
-    write_log(f"Daily reads used: {daily_reads}/3")
-    write_log(f"Can reply today: {orchestrator.can_reply_today()}")
-    
-    write_log("=== REPLY SYSTEM TEST COMPLETE ===")
 
 def test_main_content_system():
     """Test main content system"""
@@ -1236,25 +1048,12 @@ def run_single_test_post():
     
     return result
 
-def run_single_test_reply():
-    """Test reply system (uses quota)"""
-    write_log("=== TESTING SINGLE REPLY ===")
-    
-    if not quota_manager.can_read(1) or not quota_manager.can_write(1):
-        write_log("Cannot test - quota exhausted")
-        return False
-    
-    orchestrator = ReplyOrchestrator()
-    orchestrator.execute_ultra_conservative_reply_campaign()
-    
-    return True
-
 # =========================
 # MAIN EXECUTION
 # =========================
 
 if __name__ == "__main__":
-    write_log("=== ULTRA-CONSERVATIVE TWITTER BOT STARTUP ===")
+    write_log("=== ENHANCED TWITTER BOT STARTUP ===")
     
     # Validate environment
     validate_env_vars()
@@ -1270,35 +1069,25 @@ if __name__ == "__main__":
     write_log(f"Monthly reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)")
     write_log(f"Monthly writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)")
     
-    write_log("=== ULTRA-CONSERVATIVE FEATURES ===")
-    write_log("✓ Main posts: 12/day (360/month)")
-    write_log("✓ Replies: 3/day (90/month)")
-    write_log("✓ Reads: 3/day (90/month)")
-    write_log("✓ Emergency buffer: 50 writes/month")
+    write_log("=== ENHANCED FEATURES ===")
+    write_log("✓ Main posts: 12/day with contextual CTAs")
+    write_log("✓ Dynamic example openers per category")
+    write_log("✓ Premium targeting with smart timing")
+    write_log("✓ Strategic category selection")
     write_log("✓ Smart quota management active")
-    write_log("✗ Threading disabled")
+    write_log("✗ Reply system disabled (API permissions)")
     
     # Start health server in background
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     
     # Uncomment for testing (WARNING: Uses real quota):
+    # test_contextual_cta()
+    # test_premium_content_generation()
     # test_quota_system()
-    # test_reply_system()
     # test_main_content_system()
     # run_single_test_post()  # Uses 1 write quota
-    # run_single_test_reply()  # Uses 1 read + 1 write quota
     
-    # Start the ultra-conservative scheduler
-    write_log("Starting ultra-conservative scheduler...")
+    # Start the enhanced scheduler
+    write_log("Starting enhanced scheduler...")
     start_conservative_scheduler()
-
-
-
-
-
-
-
-
-
-
