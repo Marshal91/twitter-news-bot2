@@ -1,7 +1,7 @@
 """
-Complete Enhanced Twitter Bot with Ultra-Conservative Reply System
+Complete Enhanced Twitter Bot with Visual Elements
 API Limits: 100 reads/month (3/day), 500 writes/month (12 posts + 3 replies/day)
-Enhanced with contextual CTAs and dynamic examples
+Enhanced with visual elements for better engagement
 """
 
 import os
@@ -388,6 +388,97 @@ def write_log(message, level="info"):
         logging.info(message)
 
 # =========================
+# VISUAL ELEMENTS ENHANCEMENT
+# =========================
+
+def add_visual_elements_to_tweet(tweet_text, category):
+    """Add visual elements to increase engagement based on content and category"""
+    
+    # Category-specific emoji mappings
+    category_emojis = {
+        "EPL": {
+            "breaking": "⚽", "news": "⚽",
+            "analysis": "📊", "stats": "📊", "data": "📊",
+            "transfer": "🔄", "signing": "🔄",
+            "match": "🏆", "win": "🏆", "victory": "🏆",
+            "goal": "⚡", "score": "⚡"
+        },
+        "F1": {
+            "breaking": "🏎️", "news": "🏎️",
+            "analysis": "📈", "performance": "📈",
+            "tech": "🔧", "technical": "🔧", "innovation": "🔧",
+            "race": "🏁", "qualifying": "🏁",
+            "fastest": "⚡", "speed": "⚡"
+        },
+        "Crypto": {
+            "breaking": "🚨", "alert": "🚨",
+            "analysis": "📊", "chart": "📊",
+            "trend": "📈", "surge": "📈", "rally": "📈",
+            "regulation": "⚖️", "legal": "⚖️",
+            "bitcoin": "₿", "btc": "₿"
+        },
+        "Tesla": {
+            "breaking": "⚡", "news": "⚡",
+            "innovation": "🚀", "technology": "🚀",
+            "data": "📊", "quarterly": "📊", "earnings": "📊",
+            "battery": "🔋", "electric": "🔋",
+            "production": "🏭", "delivery": "🏭"
+        },
+        "Space Exploration": {
+            "breaking": "🚀", "launch": "🚀",
+            "discovery": "🔭", "observe": "🔭",
+            "mission": "🛰️", "satellite": "🛰️",
+            "mars": "🔴", "moon": "🌙",
+            "success": "✨", "achieve": "✨"
+        },
+        "Cycling": {
+            "breaking": "🚴", "news": "🚴",
+            "race": "🏆", "stage": "🏆", "win": "🏆",
+            "tech": "⚙️", "equipment": "⚙️",
+            "climb": "⛰️", "mountain": "⛰️",
+            "sprint": "⚡", "attack": "⚡"
+        },
+        "MotoGP": {
+            "breaking": "🏍️", "news": "🏍️",
+            "race": "🏁", "qualifying": "🏁",
+            "tech": "⚙️", "technical": "⚙️",
+            "fastest": "⚡", "lap": "⚡",
+            "champion": "🏆", "podium": "🏆"
+        }
+    }
+    
+    # Get emoji mapping for category
+    emojis = category_emojis.get(category, {})
+    if not emojis:
+        return tweet_text
+    
+    # Check if tweet already has an emoji at the start
+    if tweet_text and tweet_text[0] in "⚽📊🔄🏆⚡🏎️📈🔧🏁🚨⚖️₿🚀🔋🏭🔭🛰️🔴🌙✨🚴⛰️🏍️":
+        return tweet_text
+    
+    # Find matching keyword and add appropriate emoji
+    tweet_lower = tweet_text.lower()
+    for keyword, emoji in emojis.items():
+        if keyword in tweet_lower:
+            return f"{emoji} {tweet_text}"
+    
+    # Fallback to first primary emoji for category if no keyword match
+    fallback_emojis = {
+        "EPL": "⚽",
+        "F1": "🏎️",
+        "Crypto": "📊",
+        "Tesla": "⚡",
+        "Space Exploration": "🚀",
+        "Cycling": "🚴",
+        "MotoGP": "🏍️"
+    }
+    
+    if category in fallback_emojis:
+        return f"{fallback_emojis[category]} {tweet_text}"
+    
+    return tweet_text
+
+# =========================
 # ENHANCED CONTENT STRATEGIES
 # =========================
 
@@ -762,7 +853,7 @@ def shorten_url_with_fallback(long_url):
     return long_url
 
 def post_main_content(category):
-    """Post main content using write quota with premium/global strategies and retry logic"""
+    """Post main content using write quota with premium/global strategies, visual elements, and retry logic"""
     global last_post_time
     
     if not can_post_now() or not quota_manager.can_write(1):
@@ -783,6 +874,9 @@ def post_main_content(category):
             write_log(f"Using standard strategy for {category}")
             tweet_text = generate_content_aware_post(article["title"], category, article["url"])
         
+        # Add visual elements enhancement
+        tweet_text = add_visual_elements_to_tweet(tweet_text, category)
+        
         short_url = shorten_url_with_fallback(article["url"])
         full_tweet = f"{tweet_text}\n\n{short_url}"
         full_tweet = optimize_hashtags_for_reach(full_tweet, category)
@@ -802,7 +896,7 @@ def post_main_content(category):
                 last_post_time = datetime.now(pytz.UTC)
                 
                 timing_type = "premium" if is_premium_posting_time() else "global" if is_global_posting_time() else "standard"
-                write_log(f"Posted {timing_type} content for {category}: {article['title'][:50]}...")
+                write_log(f"Posted {timing_type} content with visual elements for {category}: {article['title'][:50]}...")
                 return True
                 
             except Exception as e:
@@ -827,7 +921,6 @@ def post_main_content(category):
     
     write_log(f"No new articles to post for {category}")
     return False
-    
 
 # =========================
 # SCHEDULER SYSTEM
@@ -881,13 +974,14 @@ def run_reply_job():
         write_log(f"Error in reply campaign: {e}")
 
 def start_conservative_scheduler():
-    """Ultra-conservative scheduler with premium/global timing strategies"""
-    write_log("Starting ultra-conservative scheduler with strategic timing...")
+    """Ultra-conservative scheduler with premium/global timing strategies and visual elements"""
+    write_log("Starting ultra-conservative scheduler with strategic timing and visual elements...")
     write_log(f"Premium posting times (business focus): {PREMIUM_POSTING_TIMES}")
     write_log(f"Global posting times (sports/entertainment): {GLOBAL_POSTING_TIMES}")
     write_log(f"Reply campaign times (DISABLED): {REPLY_CAMPAIGN_TIMES}")
     write_log(f"Business categories: {BUSINESS_CATEGORIES}")
     write_log(f"Global categories: {GLOBAL_CATEGORIES}")
+    write_log("Visual elements enhancement: ACTIVE")
     
     quota_status = quota_manager.get_quota_status()
     write_log(f"Monthly quota: {quota_status}")
@@ -906,11 +1000,6 @@ def start_conservative_scheduler():
                     timing_type = "PREMIUM" if is_premium_posting_time() else "GLOBAL" if is_global_posting_time() else "STANDARD"
                     write_log(f"{timing_type} content time: {current_minute}")
                     run_main_content_job()
-                
-                # Reply campaigns disabled
-                # elif should_run_reply_campaign():
-                #     write_log(f"Reply campaign time: {current_minute}")
-                #     run_reply_job()
                 
                 last_checked_minute = current_minute
                 
@@ -943,6 +1032,7 @@ Daily Allocation:
 - Emergency Buffer: 50/month
 
 Enhanced Features:
+- Visual Elements: ACTIVE
 - Contextual CTAs: ACTIVE
 - Dynamic Examples: ACTIVE
 - Premium Targeting: ACTIVE
@@ -975,74 +1065,6 @@ def start_health_server():
 # TESTING FUNCTIONS
 # =========================
 
-def test_contextual_cta():
-    """Test contextual CTA generation"""
-    write_log("=== TESTING CONTEXTUAL CTA SYSTEM ===")
-    
-    test_cases = [
-        ("Crypto", "Bitcoin ETF Partnership with Major Bank"),
-        ("F1", "Revolutionary Aerodynamic Technology Breakthrough"),
-        ("Tesla", "Q3 Financial Results Show Record Profits"),
-        ("EPL", "New Broadcasting Deal Regulation Announced")
-    ]
-    
-    for category, title in test_cases:
-        cta = get_contextual_cta(category, title)
-        examples = get_example_openers(category)
-        write_log(f"{category} - '{title}' -> CTA: {cta}")
-        write_log(f"Examples: {examples[:2]}")
-    
-    write_log("=== CONTEXTUAL CTA TEST COMPLETE ===")
-
-def test_premium_content_generation():
-    """Test premium content generation with new system"""
-    write_log("=== TESTING PREMIUM CONTENT GENERATION ===")
-    
-    test_title = "Tesla Announces Major Manufacturing Partnership"
-    test_category = "Tesla"
-    test_url = "https://example.com/tesla-news"
-    
-    content = generate_premium_targeted_content(test_title, test_category, test_url)
-    write_log(f"Generated content: {content}")
-    
-    write_log("=== PREMIUM CONTENT TEST COMPLETE ===")
-
-def test_quota_system():
-    """Test quota management system"""
-    write_log("=== TESTING QUOTA SYSTEM ===")
-    status = quota_status = quota_manager.get_quota_status()
-    write_log(f"Current quota: {status}")
-    
-    # Test read quota
-    can_read = quota_manager.can_read(1)
-    write_log(f"Can read (1): {can_read}")
-    
-    # Test write quota
-    can_write = quota_manager.can_write(1)
-    write_log(f"Can write (1): {can_write}")
-    
-    write_log("=== QUOTA TEST COMPLETE ===")
-
-def test_main_content_system():
-    """Test main content system"""
-    write_log("=== TESTING MAIN CONTENT SYSTEM ===")
-    
-    # Test category selection
-    categories = list(RSS_FEEDS.keys())
-    selected = random.choice(categories)
-    write_log(f"Selected category: {selected}")
-    
-    # Test article fetching
-    articles = get_articles_for_category(selected)
-    write_log(f"Fetched {len(articles)} articles")
-    
-    # Test hashtag optimization
-    test_text = "This is a test tweet"
-    optimized = optimize_hashtags_for_reach(test_text, selected)
-    write_log(f"Hashtag optimization: {optimized}")
-    
-    write_log("=== MAIN CONTENT TEST COMPLETE ===")
-
 def test_auth():
     """Test Twitter API authentication"""
     try:
@@ -1054,28 +1076,12 @@ def test_auth():
         write_log(f"Authentication failed: {e}")
         return False
 
-def run_single_test_post():
-    """Test posting a single tweet (uses quota)"""
-    write_log("=== TESTING SINGLE POST ===")
-    
-    if not quota_manager.can_write(1):
-        write_log("Cannot test - write quota exhausted")
-        return False
-    
-    categories = list(RSS_FEEDS.keys())
-    category = random.choice(categories)
-    
-    result = post_main_content(category)
-    write_log(f"Test post result: {result}")
-    
-    return result
-
 # =========================
 # MAIN EXECUTION
 # =========================
 
 if __name__ == "__main__":
-    write_log("=== ENHANCED TWITTER BOT STARTUP ===")
+    write_log("=== ENHANCED TWITTER BOT STARTUP (WITH VISUAL ELEMENTS) ===")
     
     # Validate environment
     validate_env_vars()
@@ -1092,6 +1098,7 @@ if __name__ == "__main__":
     write_log(f"Monthly writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)")
     
     write_log("=== ENHANCED FEATURES ===")
+    write_log("✓ Visual elements with smart emojis")
     write_log("✓ Main posts: 12/day with contextual CTAs")
     write_log("✓ Dynamic example openers per category")
     write_log("✓ Premium targeting with smart timing")
@@ -1103,14 +1110,6 @@ if __name__ == "__main__":
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     
-    # Uncomment for testing (WARNING: Uses real quota):
-    # test_contextual_cta()
-    # test_premium_content_generation()
-    # test_quota_system()
-    # test_main_content_system()
-    # run_single_test_post()  # Uses 1 write quota
-    
     # Start the enhanced scheduler
-    write_log("Starting enhanced scheduler...")
+    write_log("Starting enhanced scheduler with visual elements...")
     start_conservative_scheduler()
-
