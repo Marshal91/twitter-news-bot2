@@ -762,7 +762,7 @@ def shorten_url_with_fallback(long_url):
     return long_url
 
 def post_main_content(category):
-    """Post main content using write quota with premium/global strategies"""
+    """Post main content using write quota with premium/global strategies and retry logic"""
     global last_post_time
     
     if not can_post_now() or not quota_manager.can_write(1):
@@ -790,22 +790,44 @@ def post_main_content(category):
         if len(full_tweet) > 280:
             full_tweet = full_tweet[:277] + "..."
         
-        try:
-            response = twitter_client.create_tweet(text=full_tweet)
-            quota_manager.use_write(1)
-            log_posted(article["url"])
-            last_post_time = datetime.now(pytz.UTC)
-            
-            timing_type = "premium" if is_premium_posting_time() else "global" if is_global_posting_time() else "standard"
-            write_log(f"Posted {timing_type} content for {category}: {article['title'][:50]}...")
-            return True
-            
-        except Exception as e:
-            write_log(f"Error posting main content: {e}")
-            return False
+        # Retry logic for network failures
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                response = twitter_client.create_tweet(text=full_tweet)
+                quota_manager.use_write(1)
+                log_posted(article["url"])
+                last_post_time = datetime.now(pytz.UTC)
+                
+                timing_type = "premium" if is_premium_posting_time() else "global" if is_global_posting_time() else "standard"
+                write_log(f"Posted {timing_type} content for {category}: {article['title'][:50]}...")
+                return True
+                
+            except Exception as e:
+                error_msg = str(e)
+                
+                # Don't retry on permission errors
+                if "403" in error_msg or "forbidden" in error_msg.lower():
+                    write_log(f"403 Forbidden error - check API permissions")
+                    return False
+                elif "duplicate" in error_msg.lower():
+                    write_log("Duplicate content detected")
+                    return False
+                # Retry on network errors
+                elif attempt < max_retries - 1:
+                    write_log(f"Network error on attempt {attempt + 1}/{max_retries}: {error_msg}")
+                    write_log(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff: 5s, 10s, 20s
+                else:
+                    write_log(f"All {max_retries} retry attempts failed: {e}")
+                    return False
     
     write_log(f"No new articles to post for {category}")
     return False
+    
 
 # =========================
 # SCHEDULER SYSTEM
@@ -1091,3 +1113,4 @@ if __name__ == "__main__":
     # Start the enhanced scheduler
     write_log("Starting enhanced scheduler...")
     start_conservative_scheduler()
+
