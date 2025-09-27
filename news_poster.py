@@ -174,8 +174,8 @@ GLOBAL_POSTING_TIMES = [
 MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
 
 # Reply campaign times (only 3 times per day)
-REPLY_CAMPAIGN_TIMES = [
-    "10:15",  # Mid-morning
+REPLY_TIMES = [
+    "10:25",  # Mid-morning
     "16:30",  # Mid-afternoon  
     "22:30",  # Late evening
 ]
@@ -1243,4 +1243,5 @@ if __name__ == "__main__":
     # Start the enhanced scheduler
     write_log("Starting enhanced scheduler with visual elements...")
     start_conservative_scheduler()
+
 
