@@ -149,7 +149,6 @@ FRESHNESS_WINDOW = timedelta(hours=72)
 
 # Ultra-conservative reply limits
 DAILY_REPLY_LIMIT = 3  # Only 3 replies per day to save writes
-DAILY_READ_LIMIT = 3   # Only 3 reads per day for reply research
 
 # Premium posting times - targeting business professionals and decision-makers
 PREMIUM_POSTING_TIMES = [
@@ -176,7 +175,7 @@ MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
 
 # Reply campaign times (only 3 times per day)
 REPLY_CAMPAIGN_TIMES = [
-    "11:25",  # Mid-morning
+    "10:15",  # Mid-morning
     "16:30",  # Mid-afternoon  
     "22:30",  # Late evening
 ]
@@ -388,6 +387,186 @@ def write_log(message, level="info"):
         logging.info(message)
 
 # =========================
+# TARGETED REPLY SYSTEM - Arsenal & Crypto Only
+# =========================
+
+class TargetedReplySystem:
+    def __init__(self):
+        self.reply_log_file = "replied_tweets.json"
+        self.daily_reply_limit = 3  # Conservative: 90 replies/month
+        self.load_reply_log()
+        
+    def load_reply_log(self):
+        """Load reply history"""
+        try:
+            if os.path.exists(self.reply_log_file):
+                with open(self.reply_log_file, 'r') as f:
+                    self.reply_log = json.load(f)
+            else:
+                self.reply_log = {
+                    "date": datetime.now(pytz.UTC).strftime("%Y-%m-%d"),
+                    "today_count": 0,
+                    "replied_ids": []
+                }
+        except:
+            self.reply_log = {
+                "date": datetime.now(pytz.UTC).strftime("%Y-%m-%d"),
+                "today_count": 0,
+                "replied_ids": []
+            }
+    
+    def save_reply_log(self):
+        """Save reply history"""
+        with open(self.reply_log_file, 'w') as f:
+            json.dump(self.reply_log, f, indent=2)
+    
+    def can_reply_today(self):
+        """Check if we can still reply today"""
+        current_date = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
+        
+        # Reset counter if new day
+        if self.reply_log["date"] != current_date:
+            self.reply_log = {
+                "date": current_date,
+                "today_count": 0,
+                "replied_ids": []
+            }
+            self.save_reply_log()
+        
+        return self.reply_log["today_count"] < self.daily_reply_limit
+    
+    def search_targeted_tweets(self, query, max_results=5):
+        """Search for tweets about Arsenal or Crypto"""
+        if not quota_manager.can_read(1):
+            write_log("Cannot search - read quota exhausted")
+            return []
+        
+        try:
+            # Search for recent tweets (last 2 hours to ensure freshness)
+            tweets = twitter_client.search_recent_tweets(
+                query=query,
+                max_results=max_results,
+                tweet_fields=['author_id', 'created_at', 'public_metrics']
+            )
+            
+            quota_manager.use_read(1)
+            
+            if tweets.data:
+                # Filter out tweets we've already replied to
+                new_tweets = [
+                    tweet for tweet in tweets.data 
+                    if str(tweet.id) not in self.reply_log["replied_ids"]
+                ]
+                return new_tweets
+            return []
+            
+        except Exception as e:
+            write_log(f"Error searching tweets: {e}")
+            return []
+    
+    def generate_reply(self, tweet_text, topic):
+        """Generate contextual reply using GPT"""
+        
+        prompts = {
+            "Arsenal": """Create a thoughtful reply to this Arsenal tweet: "{tweet_text}"
+
+Requirements:
+- Show genuine Arsenal knowledge and passion
+- Add value to the conversation (insight, question, or perspective)
+- Keep it under 200 characters
+- Be conversational, not spammy
+- No hashtags or self-promotion
+
+Write ONLY the reply text:""",
+            
+            "Crypto": """Create an insightful reply to this crypto tweet: "{tweet_text}"
+
+Requirements:
+- Demonstrate crypto/blockchain knowledge
+- Provide analytical perspective or thoughtful question
+- Keep it under 200 characters
+- Professional tone, not financial advice
+- No hashtags or promotional content
+
+Write ONLY the reply text:"""
+        }
+        
+        try:
+            prompt = prompts[topic].format(tweet_text=tweet_text)
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": f"You're a knowledgeable {topic} enthusiast who adds value to conversations with insights and thoughtful questions."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=100,
+                temperature=0.7
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            write_log(f"Error generating reply: {e}")
+            return None
+    
+    def post_reply(self, tweet_id, reply_text):
+        """Post reply with quota check"""
+        if not quota_manager.can_write(1):
+            write_log("Cannot reply - write quota exhausted")
+            return False
+        
+        try:
+            twitter_client.create_tweet(
+                text=reply_text,
+                in_reply_to_tweet_id=tweet_id
+            )
+            
+            quota_manager.use_write(1)
+            self.reply_log["today_count"] += 1
+            self.reply_log["replied_ids"].append(str(tweet_id))
+            self.save_reply_log()
+            
+            write_log(f"Posted reply to tweet {tweet_id}")
+            return True
+            
+        except Exception as e:
+            write_log(f"Error posting reply: {e}")
+            return False
+    
+    def execute_reply_campaign(self):
+        """Execute targeted reply campaign"""
+        if not self.can_reply_today():
+            write_log("Daily reply limit reached")
+            return
+        
+        # Define search queries
+        searches = [
+            ("Arsenal", "Arsenal FC -filter:retweets -filter:replies lang:en", 5),
+            ("Crypto", "Bitcoin OR Ethereum OR crypto -filter:retweets -filter:replies lang:en", 5)
+        ]
+        
+        for topic, query, max_results in searches:
+            if not self.can_reply_today():
+                break
+            
+            write_log(f"Searching for {topic} tweets...")
+            tweets = self.search_targeted_tweets(query, max_results)
+            
+            for tweet in tweets:
+                if not self.can_reply_today():
+                    break
+                
+                # Generate and post reply
+                reply_text = self.generate_reply(tweet.text, topic)
+                if reply_text:
+                    success = self.post_reply(tweet.id, reply_text)
+                    if success:
+                        write_log(f"Replied to {topic} tweet: {tweet.text[:50]}...")
+                        time.sleep(60)  # 1 minute cooldown between replies
+
+# Initialize reply system
+reply_system = TargetedReplySystem()
+
+# =========================
 # VISUAL ELEMENTS ENHANCEMENT
 # =========================
 
@@ -562,63 +741,6 @@ def get_example_openers(category):
         "Industry data shows...",
         "Performance metrics indicate..."
     ])
-
-# =========================
-# REPLY SYSTEM COMPONENTS (TEMPORARILY DISABLED)
-# =========================
-
-class TweetRetriever:
-    def __init__(self):
-        self.replied_tweets_file = "replied_tweets.txt"
-        
-    def load_replied_tweets(self):
-        """Load list of already replied tweet IDs"""
-        if os.path.exists(self.replied_tweets_file):
-            with open(self.replied_tweets_file, 'r') as f:
-                return set(line.strip() for line in f.readlines())
-        return set()
-    
-    def save_replied_tweet(self, tweet_id):
-        """Save tweet ID to avoid duplicate replies"""
-        with open(self.replied_tweets_file, 'a') as f:
-            f.write(f"{tweet_id}\n")
-
-class ReplyGenerator:
-    def __init__(self):
-        self.reply_strategies = {
-            "EPL": {
-                "keywords": ["premier league", "arsenal", "football", "epl"],
-                "tone": "knowledgeable football fan"
-            },
-            "F1": {
-                "keywords": ["formula1", "f1", "racing"],
-                "tone": "racing enthusiast"
-            },
-            "Crypto": {
-                "keywords": ["bitcoin", "crypto", "blockchain"],
-                "tone": "crypto analyst"
-            },
-            "Tesla": {
-                "keywords": ["tesla", "electric car", "ev"],
-                "tone": "tech enthusiast"
-            },
-            "Space": {
-                "keywords": ["spacex", "nasa", "space"],
-                "tone": "space tech fan"
-            }
-        }
-
-class ReplyOrchestrator:
-    def __init__(self):
-        self.retriever = TweetRetriever()
-        self.generator = ReplyGenerator()
-        self.daily_replies_file = "daily_replies.json"
-        self.daily_reads_file = "daily_reads.json"
-        
-    def execute_ultra_conservative_reply_campaign(self):
-        """DISABLED: Reply campaign temporarily disabled due to API permissions"""
-        write_log("Reply campaigns temporarily disabled - focusing on main content strategy")
-        return
 
 # =========================
 # MAIN CONTENT POSTING (Enhanced)
@@ -965,23 +1087,24 @@ def run_main_content_job():
         write_log(f"Error in main content job: {e}")
 
 def run_reply_job():
-    """Reply campaign job - TEMPORARILY DISABLED"""
+    """Execute reply campaign"""
     try:
-        write_log("Reply campaigns temporarily disabled - focusing on main content")
-        reply_orchestrator = ReplyOrchestrator()
-        reply_orchestrator.execute_ultra_conservative_reply_campaign()
+        write_log("Starting reply campaign...")
+        reply_system.execute_reply_campaign()
+        write_log("Reply campaign completed")
     except Exception as e:
         write_log(f"Error in reply campaign: {e}")
 
 def start_conservative_scheduler():
-    """Ultra-conservative scheduler with premium/global timing strategies and visual elements"""
-    write_log("Starting ultra-conservative scheduler with strategic timing and visual elements...")
+    """Ultra-conservative scheduler with premium/global timing, visual elements, and replies"""
+    write_log("Starting ultra-conservative scheduler with replies enabled...")
     write_log(f"Premium posting times (business focus): {PREMIUM_POSTING_TIMES}")
     write_log(f"Global posting times (sports/entertainment): {GLOBAL_POSTING_TIMES}")
-    write_log(f"Reply campaign times (DISABLED): {REPLY_CAMPAIGN_TIMES}")
+    write_log(f"Reply campaign times: {REPLY_TIMES}")
     write_log(f"Business categories: {BUSINESS_CATEGORIES}")
     write_log(f"Global categories: {GLOBAL_CATEGORIES}")
     write_log("Visual elements enhancement: ACTIVE")
+    write_log("Targeted reply system: ACTIVE (Arsenal & Crypto)")
     
     quota_status = quota_manager.get_quota_status()
     write_log(f"Monthly quota: {quota_status}")
@@ -1000,6 +1123,11 @@ def start_conservative_scheduler():
                     timing_type = "PREMIUM" if is_premium_posting_time() else "GLOBAL" if is_global_posting_time() else "STANDARD"
                     write_log(f"{timing_type} content time: {current_minute}")
                     run_main_content_job()
+
+                # Check for reply campaign
+                if should_run_reply_campaign():
+                    write_log(f"Reply campaign time: {current_minute}")
+                    run_reply_job()
                 
                 last_checked_minute = current_minute
                 
@@ -1028,7 +1156,7 @@ Monthly Quota:
 
 Daily Allocation:
 - Main Posts: 12/day (360/month)
-- Replies: DISABLED (API permissions)
+- Replies: 3/day (90/month)
 - Emergency Buffer: 50/month
 
 Enhanced Features:
@@ -1038,6 +1166,7 @@ Enhanced Features:
 - Premium Targeting: ACTIVE
 - Strategic Timing: ACTIVE
 - Smart Quota Management: ACTIVE
+- Targeted Replies: ACTIVE (Arsenal & Crypto)
 
 Last Post: {last_post_time or 'Never'}
         """
@@ -1104,7 +1233,8 @@ if __name__ == "__main__":
     write_log("✓ Premium targeting with smart timing")
     write_log("✓ Strategic category selection")
     write_log("✓ Smart quota management active")
-    write_log("✗ Reply system disabled (API permissions)")
+    write_log("✓ Targeted reply system ACTIVE (Arsenal & Crypto)")
+    write_log("✓ Reply times: 10:00, 15:00, 21:00 UTC")
     
     # Start health server in background
     health_thread = threading.Thread(target=start_health_server, daemon=True)
@@ -1113,3 +1243,4 @@ if __name__ == "__main__":
     # Start the enhanced scheduler
     write_log("Starting enhanced scheduler with visual elements...")
     start_conservative_scheduler()
+
