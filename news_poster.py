@@ -133,7 +133,6 @@ FOOTBALL_CATEGORIES = ["EPL", "Champions League", "Europa League", "La Liga"]
 # RSS feeds
 RSS_FEEDS = {
     "EPL": [
-        "https://footyaccumulators.com/feed/",
 		"http://feeds.arsenal.com/arsenal-news",
         "https://www.premierleague.com/news",
         "https://www.skysports.com/rss/12",
@@ -773,4 +772,5 @@ if __name__ == "__main__":
     except Exception as e:
         write_log(f"CRITICAL ERROR: {e}", level="error")
         raise
+
 
