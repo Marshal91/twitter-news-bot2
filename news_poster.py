@@ -117,7 +117,7 @@ PREMIUM_POSTING_TIMES = ["08:00", "12:00", "14:00", "16:00", "18:00", "22:00"]
 GLOBAL_POSTING_TIMES = ["02:00", "04:00", "06:00", "10:00", "20:00", "00:00"]
 
 # Football matchday windows
-CHAMPIONS_LEAGUE_TIMES = ["16:00", "18:00", "19:10", "20:45", "22:20", "23:55", "01:30"]
+CHAMPIONS_LEAGUE_TIMES = ["16:00", "18:10", "19:10", "20:45", "22:20", "23:55", "01:30"]
 WEEKEND_LEAGUE_TIMES = ["14:00", "15:35", "17:10", "18:50", "20:30", "22:05", "23:40", "01:30"]
 
 # Combined posting times for normal scheduling
@@ -142,14 +142,11 @@ RSS_FEEDS = {
         "https://arseblog.com/feed/"
     ],
     "Champions League": [
-        "https://footyaccumulators.com/feed/",      
-	    "https://www.uefa.com/uefachampionsleague/news/rss.xml",
         "https://www.skysports.com/rss/11095",
         "http://feeds.bbci.co.uk/sport/football/champions-league/rss.xml",
         "https://www.theguardian.com/football/championsleague/rss"
     ],
     "Europa League": [
-	    "https://footyaccumulators.com/feed/", 
         "https://www.uefa.com/uefaeuropaleague/news/rss.xml",
         "https://www.skysports.com/rss/11750",
         "http://feeds.bbci.co.uk/sport/football/europa-league/rss.xml",
@@ -776,3 +773,4 @@ if __name__ == "__main__":
     except Exception as e:
         write_log(f"CRITICAL ERROR: {e}", level="error")
         raise
+
