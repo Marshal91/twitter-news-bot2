@@ -117,8 +117,8 @@ PREMIUM_POSTING_TIMES = ["08:00", "12:00", "14:00", "16:00", "18:00", "22:00"]
 GLOBAL_POSTING_TIMES = ["02:00", "04:00", "06:00", "10:00", "20:00", "00:00"]
 
 # Football matchday windows
-CHAMPIONS_LEAGUE_TIMES = ["19:00", "20:35", "22:10", "23:45", "01:20", "02:55", "04:30"]
-WEEKEND_LEAGUE_TIMES = ["17:00", "18:35", "20:10", "21:50", "23:30", "01:05", "02:40", "04:30"]
+CHAMPIONS_LEAGUE_TIMES = ["16:00", "18:00", "19:10", "20:45", "22:20", "23:55", "01:30"]
+WEEKEND_LEAGUE_TIMES = ["14:00", "15:35", "17:10", "18:50", "20:30", "22:05", "23:40", "01:30"]
 
 # Combined posting times for normal scheduling
 MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
