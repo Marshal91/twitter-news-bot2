@@ -141,7 +141,7 @@ CYCLING_POSTS_LOG = "cycling_posts.json"
 
 # Rate limiting configuration
 DAILY_POST_LIMIT = 15
-POST_INTERVAL_MINUTES = 90
+POST_INTERVAL_MINUTES = 87
 last_post_time = None
 FRESHNESS_WINDOW = timedelta(hours=72)
 
@@ -154,11 +154,11 @@ CYCLING_POST_TIMES = [
 
 # Premium posting times for other content
 PREMIUM_POSTING_TIMES = [
-    "08:00", "12:00", "18:00", "22:00"
+    "09:00", "12:00", "16:50", "22:00"
 ]
 
 GLOBAL_POSTING_TIMES = [
-    "02:00", "04:00", "06:00", "10:00", "20:00", "00:00", "14:00", "16:00"
+    "02:00", "04:00", "05:40", "10:30", "20:00", "00:00", "13:31", "15:05"
 ]
 
 MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
@@ -1005,3 +1005,4 @@ if __name__ == "__main__":
     
     # Start scheduler
     start_scheduler()
+
