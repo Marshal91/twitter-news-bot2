@@ -1,33 +1,4 @@
-def generate_dalle_image(self, prompt):
-        """Generate image using DALL-E 3"""
-        try:
-            write_log(f"Generating image with DALL-E for: {prompt[:50]}...")
-            
-            response = openai_client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                size="1024x1024",
-                quality="standard",
-                n=1,
-            )
-            
-            image_url = response.data[0].url
-            write_log(f"Image generated successfully: {image_url}")
-            
-            # Download the image
-            img_response = requests.get(image_url, timeout=30)
-            img_response.raise_for_status()
-            
-            return BytesIO(img_response.content)
-            
-        except Exception as e:
-            write_log(f"Error generating DALL-E image: {e}")
-            return None
-    
-    def upload_media_to_twitter(self, image_data):
-        """Upload image to Twitter and return media_id"""
-        try:
-            """
+"""
 Enhanced Twitter Bot - Nairobi Cycling Safety Awareness
 Premium X Account - Extended content support
 Replaces reply mechanism with cycling safety advocacy
