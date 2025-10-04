@@ -148,7 +148,7 @@ FRESHNESS_WINDOW = timedelta(hours=72)
 # Cycling safety post configuration
 DAILY_CYCLING_POSTS = 2  # Morning and evening posts
 CYCLING_POST_TIMES = [
-    "09:15",  # Morning commute tips
+    "07:30",  # Morning commute tips
     "18:30",  # Evening reflection/safety
 ]
 
@@ -678,18 +678,32 @@ Write the full post:"""
             photo_data = self.get_stock_photo(is_morning)
             
             media_ids = []
+            photo_credit = ""
+            
             if photo_data:
                 # Upload image to Twitter
                 media_id = self.upload_media_to_twitter(photo_data["data"])
                 if media_id:
                     media_ids = [media_id]
+                    # Add photo credit to tweet
+                    photo_credit = f"\n\n📸 Photo: {photo_data['photographer']}"
                     write_log(f"Photo by {photo_data['photographer']} - {photo_data['link']}")
             else:
                 write_log("No image available - posting text only")
             
+            # Combine content with photo credit
+            tweet_text = content["text"] + photo_credit
+            
+            # Ensure we don't exceed character limit
+            if len(tweet_text) > 280:
+                # Truncate main content to fit credit
+                max_content_length = 280 - len(photo_credit) - 3  # -3 for "..."
+                truncated_content = content["text"][:max_content_length] + "..."
+                tweet_text = truncated_content + photo_credit
+            
             # Post the tweet with or without image
             response = twitter_client.create_tweet(
-                text=content["text"],
+                text=tweet_text,
                 media_ids=media_ids if media_ids else None
             )
             quota_manager.use_write(1)
@@ -991,4 +1005,3 @@ if __name__ == "__main__":
     
     # Start scheduler
     start_scheduler()
-
