@@ -148,7 +148,7 @@ FRESHNESS_WINDOW = timedelta(hours=72)
 # Cycling safety post configuration
 DAILY_CYCLING_POSTS = 2  # Morning and evening posts
 CYCLING_POST_TIMES = [
-    "07:30",  # Morning commute tips
+    "09:15",  # Morning commute tips
     "18:30",  # Evening reflection/safety
 ]
 
@@ -991,3 +991,4 @@ if __name__ == "__main__":
     
     # Start scheduler
     start_scheduler()
+
