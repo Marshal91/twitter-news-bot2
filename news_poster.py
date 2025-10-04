@@ -141,7 +141,7 @@ CYCLING_POSTS_LOG = "cycling_posts.json"
 
 # Rate limiting configuration
 DAILY_POST_LIMIT = 15
-POST_INTERVAL_MINUTES = 87
+POST_INTERVAL_MINUTES = 90
 last_post_time = None
 FRESHNESS_WINDOW = timedelta(hours=72)
 
@@ -154,11 +154,11 @@ CYCLING_POST_TIMES = [
 
 # Premium posting times for other content
 PREMIUM_POSTING_TIMES = [
-    "09:00", "12:00", "16:50", "22:00"
+    "08:00", "12:00", "18:00", "22:00"
 ]
 
 GLOBAL_POSTING_TIMES = [
-    "02:00", "04:00", "05:40", "10:30", "20:00", "00:00", "13:31", "15:05"
+    "02:00", "04:00", "06:00", "10:00", "20:00", "00:00", "14:00", "16:00"
 ]
 
 MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
@@ -939,6 +939,7 @@ class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
+        self.send_header('Content-Length', '0')
         self.end_headers()
         
         quota_status = quota_manager.get_quota_status()
@@ -957,6 +958,19 @@ Content Strategy:
 Last Post: {last_post_time or 'Never'}
 """
         self.wfile.write(status.encode())
+    
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.send_header('Content-Length', '2')
+        self.end_headers()
+    
+    def do_POST(self):
+        # Some monitoring services use POST
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'OK')
     
     def log_message(self, format, *args):
         pass
@@ -1005,4 +1019,3 @@ if __name__ == "__main__":
     
     # Start scheduler
     start_scheduler()
-
