@@ -1,4 +1,33 @@
-"""
+def generate_dalle_image(self, prompt):
+        """Generate image using DALL-E 3"""
+        try:
+            write_log(f"Generating image with DALL-E for: {prompt[:50]}...")
+            
+            response = openai_client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1024",
+                quality="standard",
+                n=1,
+            )
+            
+            image_url = response.data[0].url
+            write_log(f"Image generated successfully: {image_url}")
+            
+            # Download the image
+            img_response = requests.get(image_url, timeout=30)
+            img_response.raise_for_status()
+            
+            return BytesIO(img_response.content)
+            
+        except Exception as e:
+            write_log(f"Error generating DALL-E image: {e}")
+            return None
+    
+    def upload_media_to_twitter(self, image_data):
+        """Upload image to Twitter and return media_id"""
+        try:
+            """
 Enhanced Twitter Bot - Nairobi Cycling Safety Awareness
 Premium X Account - Extended content support
 Replaces reply mechanism with cycling safety advocacy
@@ -22,6 +51,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from io import BytesIO
 
 # Load environment variables
 try:
@@ -128,6 +158,7 @@ TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
 TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY")  # Optional - get from unsplash.com/developers
 
 quota_manager = APIQuotaManager()
 
@@ -299,6 +330,25 @@ class NairobiCyclingContent:
             "James Gichuru Road"
         ]
         
+        # Stock photo search keywords for Unsplash/Pexels
+        self.morning_photo_keywords = [
+            "nairobi road morning traffic",
+            "nairobi street cyclist",
+            "kenya road traffic",
+            "nairobi highway morning",
+            "african city cycling",
+            "nairobi urban transport"
+        ]
+        
+        self.evening_photo_keywords = [
+            "nairobi city lights evening",
+            "nairobi road night",
+            "kenya urban night",
+            "nairobi street dusk",
+            "african city night traffic",
+            "nairobi evening commute"
+        ]
+        
         # Morning content themes (practical tips)
         self.morning_themes = [
             {
@@ -465,14 +515,128 @@ Write the full post:"""
         
         return self.posts_log["today_count"] < DAILY_CYCLING_POSTS
     
-    def get_nairobi_road_image_prompt(self, time_of_day):
-        """Generate image prompt for Nairobi road scenes"""
-        road = random.choice(self.nairobi_roads)
+    def fetch_unsplash_photo(self, keywords, is_morning=True):
+        """Fetch relevant photo from Unsplash API"""
+        if not UNSPLASH_ACCESS_KEY:
+            write_log("Unsplash API key not set - skipping image")
+            return None
         
-        if time_of_day == "morning":
-            return f"A cyclist on {road}, Nairobi, Kenya during morning rush hour. Early morning sunlight, busy traffic, realistic urban photography style. Professional quality, authentic African city atmosphere."
-        else:
-            return f"A cyclist with reflective gear on {road}, Nairobi, Kenya at dusk. City lights beginning to glow, evening traffic, urban photography. Professional quality, authentic African city atmosphere."
+        try:
+            search_term = random.choice(keywords)
+            url = f"https://api.unsplash.com/search/photos"
+            params = {
+                "query": search_term,
+                "per_page": 5,
+                "orientation": "landscape"
+            }
+            headers = {
+                "Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"
+            }
+            
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("results"):
+                # Pick random photo from results
+                photo = random.choice(data["results"])
+                photo_url = photo["urls"]["regular"]
+                photographer = photo["user"]["name"]
+                photo_link = photo["links"]["html"]
+                
+                write_log(f"Found Unsplash photo by {photographer}")
+                
+                # Download the image
+                img_response = requests.get(photo_url, timeout=30)
+                img_response.raise_for_status()
+                
+                return {
+                    "data": BytesIO(img_response.content),
+                    "photographer": photographer,
+                    "link": photo_link
+                }
+            else:
+                write_log(f"No Unsplash results for: {search_term}")
+                return None
+                
+        except Exception as e:
+            write_log(f"Error fetching Unsplash photo: {e}")
+            return None
+    
+    def fetch_pexels_photo(self, keywords, is_morning=True):
+        """Fetch relevant photo from Pexels API (fallback)"""
+        pexels_key = os.getenv("PEXELS_API_KEY")
+        if not pexels_key:
+            return None
+        
+        try:
+            search_term = random.choice(keywords)
+            url = f"https://api.pexels.com/v1/search"
+            params = {
+                "query": search_term,
+                "per_page": 5,
+                "orientation": "landscape"
+            }
+            headers = {
+                "Authorization": pexels_key
+            }
+            
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("photos"):
+                photo = random.choice(data["photos"])
+                photo_url = photo["src"]["large"]
+                photographer = photo["photographer"]
+                
+                write_log(f"Found Pexels photo by {photographer}")
+                
+                # Download the image
+                img_response = requests.get(photo_url, timeout=30)
+                img_response.raise_for_status()
+                
+                return {
+                    "data": BytesIO(img_response.content),
+                    "photographer": photographer,
+                    "link": photo["url"]
+                }
+            else:
+                write_log(f"No Pexels results for: {search_term}")
+                return None
+                
+        except Exception as e:
+            write_log(f"Error fetching Pexels photo: {e}")
+            return None
+    
+    def get_stock_photo(self, is_morning=True):
+        """Get stock photo from Unsplash or Pexels"""
+        keywords = self.morning_photo_keywords if is_morning else self.evening_photo_keywords
+        
+        # Try Unsplash first
+        photo = self.fetch_unsplash_photo(keywords, is_morning)
+        
+        # Fallback to Pexels if Unsplash fails
+        if not photo:
+            photo = self.fetch_pexels_photo(keywords, is_morning)
+        
+        return photo
+    
+    def upload_media_to_twitter(self, image_data):
+        """Upload image to Twitter using v1.1 API and return media_id"""
+        try:
+            # Reset to beginning of BytesIO stream
+            image_data.seek(0)
+            
+            # Upload using Tweepy's media_upload (v1.1 API)
+            media = twitter_api.media_upload(filename="nairobi_cycling.jpg", file=image_data)
+            
+            write_log(f"Image uploaded to Twitter - media_id: {media.media_id}")
+            return media.media_id
+            
+        except Exception as e:
+            write_log(f"Error uploading media to Twitter: {e}")
+            return None
     
     def generate_cycling_post(self, is_morning=True):
         """Generate cycling safety content"""
@@ -513,13 +677,9 @@ Write the full post:"""
             self.posts_log["today_count"] += 1
             self.save_posts_log()
             
-            time_of_day = "morning" if is_morning else "evening"
-            image_prompt = self.get_nairobi_road_image_prompt(time_of_day)
-            
             return {
                 "text": post_text,
                 "theme": theme["topic"],
-                "image_prompt": image_prompt,
                 "road": random.choice(self.nairobi_roads)
             }
             
@@ -528,7 +688,7 @@ Write the full post:"""
             return None
     
     def post_cycling_content(self, is_morning=True):
-        """Post cycling safety content with image"""
+        """Post cycling safety content with stock photo"""
         if not self.can_post_today():
             write_log("Daily cycling post limit reached")
             return False
@@ -542,12 +702,25 @@ Write the full post:"""
             return False
         
         try:
-            # Note: For actual image generation, you would use DALL-E API here
-            # For now, we'll log the image prompt for manual generation
-            write_log(f"Image prompt for this post: {content['image_prompt']}")
+            # Fetch stock photo
+            write_log(f"Fetching stock photo for {'morning' if is_morning else 'evening'} post...")
+            photo_data = self.get_stock_photo(is_morning)
             
-            # Post the text content
-            response = twitter_client.create_tweet(text=content["text"])
+            media_ids = []
+            if photo_data:
+                # Upload image to Twitter
+                media_id = self.upload_media_to_twitter(photo_data["data"])
+                if media_id:
+                    media_ids = [media_id]
+                    write_log(f"Photo by {photo_data['photographer']} - {photo_data['link']}")
+            else:
+                write_log("No image available - posting text only")
+            
+            # Post the tweet with or without image
+            response = twitter_client.create_tweet(
+                text=content["text"],
+                media_ids=media_ids if media_ids else None
+            )
             quota_manager.use_write(1)
             
             post_type = "Morning" if is_morning else "Evening"
@@ -595,6 +768,12 @@ def validate_env_vars():
     required_vars = ["OPENAI_API_KEY", "TWITTER_API_KEY", "TWITTER_API_SECRET", 
                      "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
     missing = [var for var in required_vars if not os.getenv(var)]
+    
+    # Check for optional stock photo APIs
+    if not os.getenv("UNSPLASH_ACCESS_KEY") and not os.getenv("PEXELS_API_KEY"):
+        write_log("WARNING: No stock photo API keys found (UNSPLASH_ACCESS_KEY or PEXELS_API_KEY)")
+        write_log("Cycling posts will be text-only without images")
+    
     if missing:
         raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
 
@@ -832,4 +1011,12 @@ if __name__ == "__main__":
     quota_status = quota_manager.get_quota_status()
     write_log(f"Quota: {quota_status['reads_used']}/100 reads, {quota_status['writes_used']}/500 writes")
     write_log("Cycling safety content: 2 posts/day (morning & evening)")
-    write_log("Main content: 12 posts
+    write_log("Main content: 12 posts/day")
+    write_log("Visual elements: ACTIVE")
+    
+    # Start health server in background
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    
+    # Start scheduler
+    start_scheduler()
