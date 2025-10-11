@@ -1486,7 +1486,7 @@ def run_reply_job():
         write_log(f"Error in reply campaign: {e}")
 
 def start_learning_scheduler():
-    """Scheduler with integrated learning system"""
+    """Scheduler with integrated learning system and continuous heartbeat"""
     write_log("🧠 Starting SELF-LEARNING scheduler...")
     write_log("="*60)
     write_log("Learning system: ACTIVE - Bot adapts based on performance data")
@@ -1497,6 +1497,7 @@ def start_learning_scheduler():
     write_log(f"Global categories: {GLOBAL_CATEGORIES}")
     write_log("Visual elements: ACTIVE")
     write_log("Targeted replies: DISABLED (API limitations)")
+    write_log("Continuous heartbeat: ACTIVE (30-second intervals)")
     write_log("="*60)
     
     quota_status = quota_manager.get_quota_status()
@@ -1509,27 +1510,49 @@ def start_learning_scheduler():
         write_log("🎓 Learning status: Gathering initial data...")
     
     last_checked_minute = None
+    last_heartbeat = datetime.now(pytz.UTC)
+    heartbeat_interval = 300  # 5 minutes
+    loop_count = 0
     
     while True:
         try:
-            current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
+            current_time = datetime.now(pytz.UTC)
+            current_minute = current_time.strftime("%H:%M")
+            loop_count += 1
             
+            # Heartbeat logging every 5 minutes to show bot is alive
+            if (current_time - last_heartbeat).total_seconds() >= heartbeat_interval:
+                quota_status = quota_manager.get_quota_status()
+                write_log(f"💓 HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | "
+                         f"Writes: {quota_status['writes_used']}/500 | "
+                         f"Reads: {quota_status['reads_used']}/100 | "
+                         f"Analyzed: {learning_system.performance_data['total_analyzed']} tweets")
+                last_heartbeat = current_time
+            
+            # Check for scheduled actions only when minute changes
             if current_minute != last_checked_minute:
+                write_log(f"🕐 Time check: {current_minute} UTC (Loop #{loop_count})")
+                
                 if should_post_main_content():
                     timing_type = "PREMIUM" if is_premium_posting_time() else "GLOBAL" if is_global_posting_time() else "STANDARD"
                     write_log(f"⏰ {timing_type} content time: {current_minute}")
                     run_main_content_job_with_learning()
 
                 if should_run_reply_campaign():
-                    write_log(f"Reply campaign time: {current_minute}")
+                    write_log(f"⏰ Reply campaign time: {current_minute}")
                     run_reply_job()
                 
                 last_checked_minute = current_minute
             
+            # Sleep for 30 seconds to keep the process alive
             time.sleep(30)
             
+        except KeyboardInterrupt:
+            write_log("⚠️  Keyboard interrupt detected - shutting down gracefully...")
+            raise
         except Exception as e:
-            write_log(f"ERROR in scheduler loop: {e}")
+            write_log(f"❌ ERROR in scheduler loop: {e}", level="error")
+            write_log("Continuing after 60 second cooldown...")
             time.sleep(60)
 
 # =========================
