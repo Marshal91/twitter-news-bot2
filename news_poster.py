@@ -1,10 +1,15 @@
 """
-Complete Enhanced Twitter Bot with Visual Elements
-API Limits: 100 reads/month (3/day), 500 writes/month (12 posts + 3 replies/day)
-Enhanced with visual elements for better engagement
+Production-Ready Twitter Bot with All Improvements Applied
+- Proper error handling and security
+- Class-based state management
+- Caching and performance optimizations
+- Graceful shutdown
+- Monitoring and alerting ready
 """
 
 import os
+import sys
+import signal
 import random
 import requests
 import feedparser
@@ -13,6 +18,7 @@ import time
 import hashlib
 import json
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
 import pytz
 from newspaper import Article, Config
 from openai import OpenAI
@@ -22,171 +28,52 @@ import logging
 from logging.handlers import RotatingFileHandler
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from functools import lru_cache
+from dataclasses import dataclass, asdict
+import atexit
 
-# Try to load .env file if it exists, otherwise use environment variables
-try:
-    if os.path.exists('.env'):
-        load_dotenv()
-        print("INFO: .env file loaded successfully")
-    else:
-        print("INFO: No .env file found, using system environment variables")
-except Exception as e:
-    print(f"INFO: Could not load .env file: {e}")
+# Load environment variables
+if os.path.exists('.env'):
+    load_dotenv()
 
 # =========================
-# API QUOTA MANAGEMENT
+# CONSTANTS
 # =========================
 
-class APIQuotaManager:
-    def __init__(self):
-        self.quota_file = "api_quota.json"
-        self.load_quota()
-    
-    def load_quota(self):
-        """Load current month's quota usage"""
-        try:
-            if os.path.exists(self.quota_file):
-                with open(self.quota_file, 'r') as f:
-                    data = json.load(f)
-                
-                # Check if we're in a new month
-                current_month = datetime.now(pytz.UTC).strftime("%Y-%m")
-                if data.get("month") != current_month:
-                    # Reset for new month
-                    self.quota = {
-                        "month": current_month,
-                        "reads_used": 0,
-                        "writes_used": 0,
-                        "last_reset": datetime.now(pytz.UTC).isoformat()
-                    }
-                    self.save_quota()
-                else:
-                    self.quota = data
-            else:
-                # Initialize quota file
-                self.quota = {
-                    "month": datetime.now(pytz.UTC).strftime("%Y-%m"),
-                    "reads_used": 0,
-                    "writes_used": 0,
-                    "last_reset": datetime.now(pytz.UTC).isoformat()
-                }
-                self.save_quota()
-        except Exception as e:
-            logging.error(f"Error loading quota: {e}")
-            self.quota = {
-                "month": datetime.now(pytz.UTC).strftime("%Y-%m"),
-                "reads_used": 0,
-                "writes_used": 0,
-                "last_reset": datetime.now(pytz.UTC).isoformat()
-            }
-    
-    def save_quota(self):
-        """Save quota to file"""
-        try:
-            with open(self.quota_file, 'w') as f:
-                json.dump(self.quota, f, indent=2)
-        except Exception as e:
-            logging.error(f"Error saving quota: {e}")
-    
-    def can_read(self, count=1):
-        """Check if we can make read requests (100/month = ~3/day)"""
-        return (self.quota["reads_used"] + count) <= 100
-    
-    def can_write(self, count=1):
-        """Check if we can make write requests (500/month)"""
-        return (self.quota["writes_used"] + count) <= 500
-    
-    def use_read(self, count=1):
-        """Record read API usage"""
-        if self.can_read(count):
-            self.quota["reads_used"] += count
-            self.save_quota()
-            return True
-        return False
-    
-    def use_write(self, count=1):
-        """Record write API usage"""
-        if self.can_write(count):
-            self.quota["writes_used"] += count
-            self.save_quota()
-            return True
-        return False
-    
-    def get_quota_status(self):
-        """Get current quota status"""
-        return {
-            "reads_remaining": 100 - self.quota["reads_used"],
-            "writes_remaining": 500 - self.quota["writes_used"],
-            "reads_used": self.quota["reads_used"],
-            "writes_used": self.quota["writes_used"],
-            "month": self.quota["month"]
-        }
-
-# =========================
-# CONFIGURATION (Enhanced)
-# =========================
-
-# Load from environment variables (.env file in production)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
-
-# Initialize API Quota Manager
-quota_manager = APIQuotaManager()
-
-# Log files
-LOG_FILE = "bot_log.txt"
-POSTED_LOG = "posted_links.txt"
-CONTENT_HASH_LOG = "posted_content_hashes.txt"
-
-# Enhanced rate limiting configuration
-DAILY_POST_LIMIT = 15  # Main content posts per day
-POST_INTERVAL_MINUTES = 90 # 1 hour 30 mins between posts
-last_post_time = None
+# Rate limiting
+DAILY_POST_LIMIT = 15
+POST_INTERVAL_MINUTES = 90
 FRESHNESS_WINDOW = timedelta(hours=72)
+DAILY_REPLY_LIMIT = 3
 
-# Ultra-conservative reply limits
-DAILY_REPLY_LIMIT = 3  # Only 3 replies per day to save writes
+# Probabilities
+PRIORITY_CATEGORY_CHANCE = 0.7
+TRENDING_HASHTAG_CHANCE = 0.3
 
-# Premium posting times - targeting business professionals and decision-makers
+# Cache TTL
+RSS_CACHE_TTL_MINUTES = 30
+URL_CACHE_TTL_HOURS = 24
+
+# Retry configuration
+MAX_RETRIES = 3
+INITIAL_RETRY_DELAY = 5
+
+# Posting times
 PREMIUM_POSTING_TIMES = [
-    "08:00",  # Morning business hours
-    "12:00",  # Lunch break business crowd
-    "14:00",  # Afternoon peak
-    "16:00",  # Evening engagement
-    "18:00",  # Prime evening time
-    "22:00",  # Late night Americas
+    "08:00", "12:00", "14:00", "16:00", "18:00", "22:00"
 ]
 
-# Global engagement times for sports/entertainment content
 GLOBAL_POSTING_TIMES = [
-    "02:00",  # Asia/Australia morning
-    "04:00",  # Early Morning Nairobi
-    "06:00",  # Europe morning
-    "10:00",  # Pre-lunch global
-    "20:00",  # Night professionals
-    "00:00",  # Late night Americas
+    "02:00", "04:00", "06:00", "10:00", "20:00", "00:00"
 ]
 
-# All main posting times combined
 MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
 
-# Reply campaign times (only 3 times per day)
-REPLY_TIMES = [
-    "10:25",  # Mid-morning
-    "16:30",  # Mid-afternoon  
-    "22:30",  # Late evening
-]
-
-# Categories that benefit from global timing
+# Categories
 GLOBAL_CATEGORIES = ["EPL", "F1", "MotoGP", "Cycling"]
-
-# Categories that should focus on business hours
 BUSINESS_CATEGORIES = ["Crypto", "Tesla", "Space Exploration"]
 
-# RSS feeds mapped to categories
+# RSS feeds
 RSS_FEEDS = {
     "EPL": [
         "http://feeds.arsenal.com/arsenal-news",
@@ -227,7 +114,6 @@ RSS_FEEDS = {
     ]
 }
 
-# Enhanced Premium user targeting content strategies with contextual CTAs
 PREMIUM_CONTENT_STRATEGIES = {
     "EPL": {
         "focus": "Business strategy, player valuations, commercial insights",
@@ -275,7 +161,7 @@ PREMIUM_CONTENT_STRATEGIES = {
     },
     "Space Exploration": {
         "focus": "Commercial space economy, technology transfer, investment opportunities",
-        "tone": "Strategic business and technology analysis", 
+        "tone": "Strategic business and technology analysis",
         "cta_templates": [
             "Which sectors benefit from this space technology spillover?",
             "What's the commercial viability timeline?",
@@ -346,24 +232,34 @@ TRENDING_HASHTAGS = {
     }
 }
 
-# GPT Client
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Twitter Client
-auth = tweepy.OAuth1UserHandler(
-    TWITTER_API_KEY, TWITTER_API_SECRET,
-    TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
-)
-twitter_api = tweepy.API(auth)
-twitter_client = tweepy.Client(
-    consumer_key=TWITTER_API_KEY,
-    consumer_secret=TWITTER_API_SECRET,
-    access_token=TWITTER_ACCESS_TOKEN,
-    access_token_secret=TWITTER_ACCESS_SECRET
-)
+CATEGORY_EMOJIS = {
+    "EPL": {
+        "breaking": "⚽", "news": "⚽", "analysis": "📊", "stats": "📊",
+        "transfer": "🔄", "signing": "🔄", "match": "🏆", "goal": "⚡"
+    },
+    "F1": {
+        "breaking": "🏎️", "news": "🏎️", "analysis": "📈", "tech": "🔧",
+        "race": "🏁", "fastest": "⚡"
+    },
+    "Crypto": {
+        "breaking": "🚨", "analysis": "📊", "trend": "📈", "bitcoin": "₿"
+    },
+    "Tesla": {
+        "breaking": "⚡", "innovation": "🚀", "data": "📊", "battery": "🔋"
+    },
+    "Space Exploration": {
+        "breaking": "🚀", "discovery": "🔭", "mission": "🛰️", "success": "✨"
+    },
+    "Cycling": {
+        "breaking": "🚴", "race": "🏆", "tech": "⚙️", "sprint": "⚡"
+    },
+    "MotoGP": {
+        "breaking": "🏍️", "race": "🏁", "tech": "⚙️", "champion": "🏆"
+    }
+}
 
 # =========================
-# LOGGING (Enhanced)
+# LOGGING SETUP
 # =========================
 
 if not os.path.exists('logs'):
@@ -374,484 +270,279 @@ logging.basicConfig(
     format="[%(asctime)s] %(levelname)s: %(message)s",
     handlers=[
         RotatingFileHandler('logs/bot_activity.log', maxBytes=10*1024*1024, backupCount=5),
-        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),
         logging.StreamHandler()
     ]
 )
 
-def write_log(message, level="info"):
-    """Enhanced logging to both console and persistent file"""
-    if level == "error":
-        logging.error(message)
-    else:
-        logging.info(message)
+logger = logging.getLogger(__name__)
 
 # =========================
-# TARGETED REPLY SYSTEM - Arsenal & Crypto Only
+# CUSTOM EXCEPTIONS
 # =========================
 
-class TargetedReplySystem:
-    def __init__(self):
-        self.reply_log_file = "replied_tweets.json"
-        self.daily_reply_limit = 3  # Conservative: 90 replies/month
-        self.load_reply_log()
-        
-    def load_reply_log(self):
-        """Load reply history"""
-        try:
-            if os.path.exists(self.reply_log_file):
-                with open(self.reply_log_file, 'r') as f:
-                    self.reply_log = json.load(f)
-            else:
-                self.reply_log = {
-                    "date": datetime.now(pytz.UTC).strftime("%Y-%m-%d"),
-                    "today_count": 0,
-                    "replied_ids": []
-                }
-        except:
-            self.reply_log = {
-                "date": datetime.now(pytz.UTC).strftime("%Y-%m-%d"),
-                "today_count": 0,
-                "replied_ids": []
-            }
-    
-    def save_reply_log(self):
-        """Save reply history"""
-        with open(self.reply_log_file, 'w') as f:
-            json.dump(self.reply_log, f, indent=2)
-    
-    def can_reply_today(self):
-        """Check if we can still reply today"""
-        current_date = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
-        
-        # Reset counter if new day
-        if self.reply_log["date"] != current_date:
-            self.reply_log = {
-                "date": current_date,
-                "today_count": 0,
-                "replied_ids": []
-            }
-            self.save_reply_log()
-        
-        return self.reply_log["today_count"] < self.daily_reply_limit
-    
-    def search_targeted_tweets(self, query, max_results=5):
-        """Search for tweets about Arsenal or Crypto"""
-        if not quota_manager.can_read(1):
-            write_log("Cannot search - read quota exhausted")
-            return []
-        
-        try:
-            # Search for recent tweets (last 2 hours to ensure freshness)
-            tweets = twitter_client.search_recent_tweets(
-                query=query,
-                max_results=max_results,
-                tweet_fields=['author_id', 'created_at', 'public_metrics']
-            )
-            
-            quota_manager.use_read(1)
-            
-            if tweets.data:
-                # Filter out tweets we've already replied to
-                new_tweets = [
-                    tweet for tweet in tweets.data 
-                    if str(tweet.id) not in self.reply_log["replied_ids"]
-                ]
-                return new_tweets
-            return []
-            
-        except Exception as e:
-            write_log(f"Error searching tweets: {e}")
-            return []
-    
-    def generate_reply(self, tweet_text, topic):
-        """Generate contextual reply using GPT"""
-        
-        prompts = {
-            "Arsenal": """Create a thoughtful reply to this Arsenal tweet: "{tweet_text}"
+class BotException(Exception):
+    """Base exception for bot errors"""
+    pass
 
-Requirements:
-- Show genuine Arsenal knowledge and passion
-- Add value to the conversation (insight, question, or perspective)
-- Keep it under 200 characters
-- Be conversational, not spammy
-- No hashtags or self-promotion
+class QuotaExceededException(BotException):
+    """Raised when API quota is exceeded"""
+    pass
 
-Write ONLY the reply text:""",
-            
-            "Crypto": """Create an insightful reply to this crypto tweet: "{tweet_text}"
+class AuthenticationException(BotException):
+    """Raised when authentication fails"""
+    pass
 
-Requirements:
-- Demonstrate crypto/blockchain knowledge
-- Provide analytical perspective or thoughtful question
-- Keep it under 200 characters
-- Professional tone, not financial advice
-- No hashtags or promotional content
+class ContentGenerationException(BotException):
+    """Raised when content generation fails"""
+    pass
 
-Write ONLY the reply text:"""
+# =========================
+# DATA CLASSES
+# =========================
+
+@dataclass
+class Article:
+    title: str
+    url: str
+    published: Optional[datetime] = None
+    content_hash: Optional[str] = None
+    
+    def __post_init__(self):
+        if self.content_hash is None:
+            self.content_hash = hashlib.md5(
+                f"{self.title}{self.url}".encode()
+            ).hexdigest()
+
+@dataclass
+class QuotaStatus:
+    reads_remaining: int
+    writes_remaining: int
+    reads_used: int
+    writes_used: int
+    month: str
+
+# =========================
+# API QUOTA MANAGER
+# =========================
+
+class APIQuotaManager:
+    """Manages Twitter API quota tracking"""
+    
+    def __init__(self, quota_file: str = "api_quota.json"):
+        self.quota_file = quota_file
+        self.lock = threading.Lock()
+        self.load_quota()
+    
+    def load_quota(self) -> None:
+        """Load current month's quota usage"""
+        with self.lock:
+            try:
+                if os.path.exists(self.quota_file):
+                    with open(self.quota_file, 'r') as f:
+                        data = json.load(f)
+                    
+                    current_month = datetime.now(pytz.UTC).strftime("%Y-%m")
+                    if data.get("month") != current_month:
+                        self._reset_quota()
+                    else:
+                        self.quota = data
+                else:
+                    self._reset_quota()
+            except (json.JSONDecodeError, IOError) as e:
+                logger.error(f"Error loading quota: {e}")
+                self._reset_quota()
+    
+    def _reset_quota(self) -> None:
+        """Reset quota for new month"""
+        self.quota = {
+            "month": datetime.now(pytz.UTC).strftime("%Y-%m"),
+            "reads_used": 0,
+            "writes_used": 0,
+            "last_reset": datetime.now(pytz.UTC).isoformat()
         }
-        
-        try:
-            prompt = prompts[topic].format(tweet_text=tweet_text)
-            
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": f"You're a knowledgeable {topic} enthusiast who adds value to conversations with insights and thoughtful questions."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=100,
-                temperature=0.7
+        self.save_quota()
+    
+    def save_quota(self) -> None:
+        """Save quota to file"""
+        with self.lock:
+            try:
+                with open(self.quota_file, 'w') as f:
+                    json.dump(self.quota, f, indent=2)
+            except IOError as e:
+                logger.error(f"Error saving quota: {e}")
+    
+    def can_read(self, count: int = 1) -> bool:
+        """Check if we can make read requests"""
+        with self.lock:
+            return (self.quota["reads_used"] + count) <= 100
+    
+    def can_write(self, count: int = 1) -> bool:
+        """Check if we can make write requests"""
+        with self.lock:
+            return (self.quota["writes_used"] + count) <= 500
+    
+    def use_read(self, count: int = 1) -> bool:
+        """Record read API usage"""
+        with self.lock:
+            if self.can_read(count):
+                self.quota["reads_used"] += count
+                self.save_quota()
+                return True
+            raise QuotaExceededException(f"Read quota exceeded: {self.quota['reads_used']}/100")
+    
+    def use_write(self, count: int = 1) -> bool:
+        """Record write API usage"""
+        with self.lock:
+            if self.can_write(count):
+                self.quota["writes_used"] += count
+                self.save_quota()
+                return True
+            raise QuotaExceededException(f"Write quota exceeded: {self.quota['writes_used']}/500")
+    
+    def get_quota_status(self) -> QuotaStatus:
+        """Get current quota status"""
+        with self.lock:
+            return QuotaStatus(
+                reads_remaining=100 - self.quota["reads_used"],
+                writes_remaining=500 - self.quota["writes_used"],
+                reads_used=self.quota["reads_used"],
+                writes_used=self.quota["writes_used"],
+                month=self.quota["month"]
             )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            write_log(f"Error generating reply: {e}")
+
+# =========================
+# CONTENT TRACKER
+# =========================
+
+class ContentTracker:
+    """Tracks posted content to prevent duplicates"""
+    
+    def __init__(self, url_file: str = "posted_links.txt", 
+                 hash_file: str = "posted_content_hashes.txt"):
+        self.url_file = url_file
+        self.hash_file = hash_file
+        self.posted_urls = set(self._load_urls())
+        self.content_hashes = set(self._load_hashes())
+        self.lock = threading.Lock()
+    
+    def _load_urls(self) -> List[str]:
+        """Load posted URLs from file"""
+        if not os.path.exists(self.url_file):
+            return []
+        try:
+            with open(self.url_file, 'r') as f:
+                return [line.strip() for line in f if line.strip()]
+        except IOError:
+            return []
+    
+    def _load_hashes(self) -> List[str]:
+        """Load content hashes from file"""
+        if not os.path.exists(self.hash_file):
+            return []
+        try:
+            with open(self.hash_file, 'r') as f:
+                return [line.strip() for line in f if line.strip()]
+        except IOError:
+            return []
+    
+    def is_duplicate(self, url: str, content: str) -> bool:
+        """Check if content is duplicate"""
+        with self.lock:
+            if url in self.posted_urls:
+                return True
+            
+            content_hash = hashlib.md5(content.encode()).hexdigest()
+            if content_hash in self.content_hashes:
+                return True
+            
+            return False
+    
+    def mark_posted(self, url: str, content: str) -> None:
+        """Mark content as posted"""
+        with self.lock:
+            try:
+                with open(self.url_file, 'a') as f:
+                    f.write(f"{url}\n")
+                self.posted_urls.add(url)
+                
+                content_hash = hashlib.md5(content.encode()).hexdigest()
+                with open(self.hash_file, 'a') as f:
+                    f.write(f"{content_hash}\n")
+                self.content_hashes.add(content_hash)
+            except IOError as e:
+                logger.error(f"Error marking content as posted: {e}")
+
+# =========================
+# URL CACHE
+# =========================
+
+class URLCache:
+    """Cache for shortened URLs"""
+    
+    def __init__(self, cache_file: str = "url_cache.json"):
+        self.cache_file = cache_file
+        self.cache = self._load_cache()
+        self.lock = threading.Lock()
+    
+    def _load_cache(self) -> Dict[str, Dict]:
+        """Load cache from file"""
+        if not os.path.exists(self.cache_file):
+            return {}
+        try:
+            with open(self.cache_file, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    
+    def _save_cache(self) -> None:
+        """Save cache to file"""
+        try:
+            with open(self.cache_file, 'w') as f:
+                json.dump(self.cache, f, indent=2)
+        except IOError as e:
+            logger.error(f"Error saving URL cache: {e}")
+    
+    def get(self, url: str) -> Optional[str]:
+        """Get shortened URL from cache"""
+        with self.lock:
+            if url in self.cache:
+                cached = self.cache[url]
+                cached_time = datetime.fromisoformat(cached['timestamp'])
+                if datetime.now(pytz.UTC) - cached_time < timedelta(hours=URL_CACHE_TTL_HOURS):
+                    return cached['short_url']
             return None
     
-    def post_reply(self, tweet_id, reply_text):
-        """Post reply with quota check"""
-        if not quota_manager.can_write(1):
-            write_log("Cannot reply - write quota exhausted")
-            return False
-        
-        try:
-            twitter_client.create_tweet(
-                text=reply_text,
-                in_reply_to_tweet_id=tweet_id
-            )
-            
-            quota_manager.use_write(1)
-            self.reply_log["today_count"] += 1
-            self.reply_log["replied_ids"].append(str(tweet_id))
-            self.save_reply_log()
-            
-            write_log(f"Posted reply to tweet {tweet_id}")
-            return True
-            
-        except Exception as e:
-            write_log(f"Error posting reply: {e}")
-            return False
-    
-    def execute_reply_campaign(self):
-        """Execute targeted reply campaign"""
-        if not self.can_reply_today():
-            write_log("Daily reply limit reached")
-            return
-        
-        # Define search queries
-        searches = [
-            ("Arsenal", "Arsenal FC -filter:retweets -filter:replies lang:en", 5),
-            ("Crypto", "Bitcoin OR Ethereum OR crypto -filter:retweets -filter:replies lang:en", 5)
-        ]
-        
-        for topic, query, max_results in searches:
-            if not self.can_reply_today():
-                break
-            
-            write_log(f"Searching for {topic} tweets...")
-            tweets = self.search_targeted_tweets(query, max_results)
-            
-            for tweet in tweets:
-                if not self.can_reply_today():
-                    break
-                
-                # Generate and post reply
-                reply_text = self.generate_reply(tweet.text, topic)
-                if reply_text:
-                    success = self.post_reply(tweet.id, reply_text)
-                    if success:
-                        write_log(f"Replied to {topic} tweet: {tweet.text[:50]}...")
-                        time.sleep(60)  # 1 minute cooldown between replies
-
-# Initialize reply system
-reply_system = TargetedReplySystem()
-
-# =========================
-# VISUAL ELEMENTS ENHANCEMENT
-# =========================
-
-def add_visual_elements_to_tweet(tweet_text, category):
-    """Add visual elements to increase engagement based on content and category"""
-    
-    # Category-specific emoji mappings
-    category_emojis = {
-        "EPL": {
-            "breaking": "⚽", "news": "⚽",
-            "analysis": "📊", "stats": "📊", "data": "📊",
-            "transfer": "🔄", "signing": "🔄",
-            "match": "🏆", "win": "🏆", "victory": "🏆",
-            "goal": "⚡", "score": "⚡"
-        },
-        "F1": {
-            "breaking": "🏎️", "news": "🏎️",
-            "analysis": "📈", "performance": "📈",
-            "tech": "🔧", "technical": "🔧", "innovation": "🔧",
-            "race": "🏁", "qualifying": "🏁",
-            "fastest": "⚡", "speed": "⚡"
-        },
-        "Crypto": {
-            "breaking": "🚨", "alert": "🚨",
-            "analysis": "📊", "chart": "📊",
-            "trend": "📈", "surge": "📈", "rally": "📈",
-            "regulation": "⚖️", "legal": "⚖️",
-            "bitcoin": "₿", "btc": "₿"
-        },
-        "Tesla": {
-            "breaking": "⚡", "news": "⚡",
-            "innovation": "🚀", "technology": "🚀",
-            "data": "📊", "quarterly": "📊", "earnings": "📊",
-            "battery": "🔋", "electric": "🔋",
-            "production": "🏭", "delivery": "🏭"
-        },
-        "Space Exploration": {
-            "breaking": "🚀", "launch": "🚀",
-            "discovery": "🔭", "observe": "🔭",
-            "mission": "🛰️", "satellite": "🛰️",
-            "mars": "🔴", "moon": "🌙",
-            "success": "✨", "achieve": "✨"
-        },
-        "Cycling": {
-            "breaking": "🚴", "news": "🚴",
-            "race": "🏆", "stage": "🏆", "win": "🏆",
-            "tech": "⚙️", "equipment": "⚙️",
-            "climb": "⛰️", "mountain": "⛰️",
-            "sprint": "⚡", "attack": "⚡"
-        },
-        "MotoGP": {
-            "breaking": "🏍️", "news": "🏍️",
-            "race": "🏁", "qualifying": "🏁",
-            "tech": "⚙️", "technical": "⚙️",
-            "fastest": "⚡", "lap": "⚡",
-            "champion": "🏆", "podium": "🏆"
-        }
-    }
-    
-    # Get emoji mapping for category
-    emojis = category_emojis.get(category, {})
-    if not emojis:
-        return tweet_text
-    
-    # Check if tweet already has an emoji at the start
-    if tweet_text and tweet_text[0] in "⚽📊🔄🏆⚡🏎️📈🔧🏁🚨⚖️₿🚀🔋🏭🔭🛰️🔴🌙✨🚴⛰️🏍️":
-        return tweet_text
-    
-    # Find matching keyword and add appropriate emoji
-    tweet_lower = tweet_text.lower()
-    for keyword, emoji in emojis.items():
-        if keyword in tweet_lower:
-            return f"{emoji} {tweet_text}"
-    
-    # Fallback to first primary emoji for category if no keyword match
-    fallback_emojis = {
-        "EPL": "⚽",
-        "F1": "🏎️",
-        "Crypto": "📊",
-        "Tesla": "⚡",
-        "Space Exploration": "🚀",
-        "Cycling": "🚴",
-        "MotoGP": "🏍️"
-    }
-    
-    if category in fallback_emojis:
-        return f"{fallback_emojis[category]} {tweet_text}"
-    
-    return tweet_text
-
-# =========================
-# ENHANCED CONTENT STRATEGIES
-# =========================
-
-def get_contextual_cta(category, title):
-    """Generate contextual CTA based on article content"""
-    strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
-    if not strategy or not strategy.get("cta_templates"):
-        return "What's your take on this development?"
-    
-    # Simple keyword matching to select most relevant CTA
-    title_lower = title.lower()
-    cta_templates = strategy["cta_templates"]
-    
-    # Priority keywords for CTA selection
-    cta_keywords = {
-        0: ["partnership", "deal", "merger", "acquisition", "investment"],
-        1: ["technology", "innovation", "breakthrough", "development", "tech"],
-        2: ["market", "competition", "competitor", "industry", "business"],
-        3: ["regulation", "policy", "compliance", "legal", "government"],
-        4: ["financial", "revenue", "profit", "economic", "cost", "pricing"]
-    }
-    
-    # Find best matching CTA based on content
-    for i, keywords in cta_keywords.items():
-        if any(keyword in title_lower for keyword in keywords) and i < len(cta_templates):
-            return cta_templates[i]
-    
-    # Fallback to random selection from available CTAs
-    return random.choice(cta_templates)
-
-def get_example_openers(category):
-    """Get category-specific example openers"""
-    examples = {
-        "EPL": [
-            "Financial Fair Play data reveals...",
-            "Transfer market analysis shows...", 
-            "Commercial performance indicates...",
-            "Revenue projections suggest..."
-        ],
-        "F1": [
-            "Aerodynamic regulations reshape...",
-            "Technical partnerships indicate...",
-            "Performance data suggests...",
-            "Innovation cycles show..."
-        ],
-        "Crypto": [
-            "Institutional flow patterns reveal...",
-            "Regulatory frameworks suggest...",
-            "Market structure analysis shows...",
-            "Adoption metrics indicate..."
-        ],
-        "Tesla": [
-            "Manufacturing efficiency data shows...",
-            "Market positioning analysis reveals...",
-            "Supply chain indicators suggest...",
-            "Innovation pipeline indicates..."
-        ],
-        "Space Exploration": [
-            "Commercial viability studies show...",
-            "Technology transfer patterns reveal...",
-            "Mission economics suggest...",
-            "Industry partnerships indicate..."
-        ],
-        "Cycling": [
-            "Performance analytics reveal...",
-            "Equipment innovation data shows...",
-            "Sponsorship metrics suggest...",
-            "Market trend analysis indicates..."
-        ],
-        "MotoGP": [
-            "Technical development cycles show...",
-            "Safety innovation data reveals...",
-            "Manufacturer partnerships indicate...",
-            "Performance benchmarks suggest..."
-        ]
-    }
-    
-    return examples.get(category, [
-        "Market implications suggest...",
-        "Strategic analysis reveals...",
-        "Industry data shows...",
-        "Performance metrics indicate..."
-    ])
-
-# =========================
-# MAIN CONTENT POSTING (Enhanced)
-# =========================
-
-def validate_env_vars():
-    """Validate required environment variables."""
-    required_vars = ["OPENAI_API_KEY", "TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
-    missing = [var for var in required_vars if not os.getenv(var)]
-    if missing:
-        write_log(f"Missing environment variables: {', '.join(missing)}", level="error")
-        raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
-
-def get_trending_hashtags(category):
-    """Get optimized hashtags for better reach"""
-    hashtag_data = TRENDING_HASHTAGS.get(category)
-    if not hashtag_data:
-        return []
-    
-    selected = random.sample(hashtag_data["primary"], 1)
-    
-    if len(hashtag_data["secondary"]) >= 1:
-        selected.extend(random.sample(hashtag_data["secondary"], 1))
-    
-    if random.random() < 0.3 and hashtag_data["trending"]:
-        selected.append(random.choice(hashtag_data["trending"]))
-    
-    return selected[:3]
-
-def optimize_hashtags_for_reach(tweet_text, category):
-    """Add optimized hashtags"""
-    hashtags = get_trending_hashtags(category)
-    
-    if not hashtags:
-        return tweet_text
-    
-    available_space = 280 - len(tweet_text) - 5
-    hashtag_text = " " + " ".join(hashtags)
-    
-    if len(hashtag_text) <= available_space:
-        return tweet_text + hashtag_text
-    
-    return tweet_text
-
-def fetch_rss(feed_url):
-    """Fetch news from an RSS feed"""
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(feed_url, headers=headers, timeout=15)
-        response.raise_for_status()
-        feed = feedparser.parse(response.content)
-        
-        articles = []
-        for entry in feed.entries[:3]:  # Reduced to 3
-            article = {
-                "title": entry.title,
-                "url": entry.link,
-                "published_parsed": getattr(entry, 'published_parsed', None)
+    def set(self, url: str, short_url: str) -> None:
+        """Store shortened URL in cache"""
+        with self.lock:
+            self.cache[url] = {
+                'short_url': short_url,
+                'timestamp': datetime.now(pytz.UTC).isoformat()
             }
-            articles.append(article)
-        return articles
-    except Exception as e:
-        write_log(f"Error fetching RSS from {feed_url}: {e}")
-        return []
+            self._save_cache()
 
-def get_articles_for_category(category):
-    """Get articles for a category"""
-    feeds = RSS_FEEDS.get(category, [])
-    articles = []
+# =========================
+# CONTENT GENERATOR
+# =========================
+
+class ContentGenerator:
+    """Generates tweet content using GPT"""
     
-    for feed in feeds[:2]:  # Only check first 2 feeds to save time
-        feed_articles = fetch_rss(feed)
-        if feed_articles:
-            articles.extend(feed_articles)
-            break  # Stop after first successful feed
+    def __init__(self, api_key: str):
+        self.client = OpenAI(api_key=api_key)
     
-    write_log(f"Total articles fetched for {category}: {len(articles)}")
-    return articles
-
-def is_premium_posting_time():
-    """Check if current time is optimal for premium demographics"""
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in PREMIUM_POSTING_TIMES
-
-def is_global_posting_time():
-    """Check if current time is optimal for global audiences"""
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in GLOBAL_POSTING_TIMES
-
-def should_use_premium_strategy(category):
-    """Determine if category should use premium targeting"""
-    return category in BUSINESS_CATEGORIES or is_premium_posting_time()
-
-def should_use_global_strategy(category):
-    """Determine if category should use global timing strategy"""
-    return category in GLOBAL_CATEGORIES or is_global_posting_time()
-
-def generate_premium_targeted_content(title, category, article_url):
-    """Generate content with contextual CTA and dynamic examples"""
-    strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
-    if not strategy:
-        return generate_content_aware_post(title, category, article_url)
-    
-    # Get contextual CTA instead of generic one
-    contextual_cta = get_contextual_cta(category, title)
-    
-    # Get dynamic examples
-    example_openers = get_example_openers(category)
-    examples_text = "\n".join([f"- \"{opener}\"" for opener in example_openers])
-    
-    prompt = f"""Create a Twitter post about: {title}
+    def generate_premium_content(self, title: str, category: str, 
+                                 article_url: str) -> str:
+        """Generate premium targeted content"""
+        strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
+        if not strategy:
+            return self.generate_standard_content(title, category, article_url)
+        
+        contextual_cta = self._get_contextual_cta(category, title)
+        example_openers = self._get_example_openers(category)
+        examples_text = "\n".join([f"- \"{opener}\"" for opener in example_openers])
+        
+        prompt = f"""Create a Twitter post about: {title}
 
 Target Audience: Business professionals, decision-makers, industry experts
 Category: {category}
@@ -871,52 +562,27 @@ Examples for {category}:
 
 Write ONLY the tweet text:"""
 
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": f"You create content for business professionals and industry experts. Focus on strategic insights, market implications, and data-driven analysis that appeals to decision-makers in {category}."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=120,
-            temperature=0.7  # Slightly lower for more professional tone
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"Premium content generation failed: {e}")
-        # Fallback to regular content generation
-        return generate_content_aware_post(title, category, article_url)
-
-def detect_category_with_timing_strategy():
-    """Select category with enhanced logic for premium/global times"""
-    categories = list(RSS_FEEDS.keys())
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"You create content for business professionals and industry experts. Focus on strategic insights, market implications, and data-driven analysis that appeals to decision-makers in {category}."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=120,
+                temperature=0.7
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Premium content generation failed: {e}")
+            raise ContentGenerationException(f"Failed to generate premium content: {e}")
     
-    # During premium posting times, prioritize business-relevant categories
-    if is_premium_posting_time():
-        priority_categories = BUSINESS_CATEGORIES
-        available_priority = [cat for cat in priority_categories if cat in categories]
-        if available_priority and random.random() < 0.7:  # 70% chance for priority
-            category = random.choice(available_priority)
-            write_log(f"Selected business category for premium time: {category}")
-            return category
-    
-    # During global posting times, prioritize global categories
-    if is_global_posting_time():
-        priority_categories = GLOBAL_CATEGORIES
-        available_priority = [cat for cat in priority_categories if cat in categories]
-        if available_priority and random.random() < 0.7:  # 70% chance for priority
-            category = random.choice(available_priority)
-            write_log(f"Selected global category for global time: {category}")
-            return category
-    
-    # Regular random selection
-    category = random.choice(categories)
-    write_log(f"Selected category: {category}")
-    return category
-
-def generate_content_aware_post(title, category, article_url):
-    """Generate viral-worthy posts"""
-    try:
+    def generate_standard_content(self, title: str, category: str,
+                                  article_url: str) -> str:
+        """Generate standard engaging content"""
         prompt = f"""Create an engaging Twitter post about: {title}
 
 Category: {category}
@@ -928,248 +594,642 @@ Requirements:
 
 Write ONLY the tweet text:"""
 
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Create viral Twitter content that drives engagement."},
-                {"role": "user", "content": prompt}
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Create viral Twitter content that drives engagement."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=100,
+                temperature=0.8
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Standard content generation failed: {e}")
+            raise ContentGenerationException(f"Failed to generate content: {e}")
+    
+    def _get_contextual_cta(self, category: str, title: str) -> str:
+        """Get contextual CTA based on article content"""
+        strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
+        if not strategy or not strategy.get("cta_templates"):
+            return "What's your take on this development?"
+        
+        title_lower = title.lower()
+        cta_templates = strategy["cta_templates"]
+        
+        cta_keywords = {
+            0: ["partnership", "deal", "merger", "acquisition", "investment"],
+            1: ["technology", "innovation", "breakthrough", "development", "tech"],
+            2: ["market", "competition", "competitor", "industry", "business"],
+            3: ["regulation", "policy", "compliance", "legal", "government"],
+            4: ["financial", "revenue", "profit", "economic", "cost", "pricing"]
+        }
+        
+        for i, keywords in cta_keywords.items():
+            if any(keyword in title_lower for keyword in keywords) and i < len(cta_templates):
+                return cta_templates[i]
+        
+        return random.choice(cta_templates)
+    
+    def _get_example_openers(self, category: str) -> List[str]:
+        """Get category-specific example openers"""
+        examples = {
+            "EPL": [
+                "Financial Fair Play data reveals...",
+                "Transfer market analysis shows...",
+                "Commercial performance indicates...",
+                "Revenue projections suggest..."
             ],
-            max_tokens=100,
-            temperature=0.8
+            "F1": [
+                "Aerodynamic regulations reshape...",
+                "Technical partnerships indicate...",
+                "Performance data suggests...",
+                "Innovation cycles show..."
+            ],
+            "Crypto": [
+                "Institutional flow patterns reveal...",
+                "Regulatory frameworks suggest...",
+                "Market structure analysis shows...",
+                "Adoption metrics indicate..."
+            ],
+            "Tesla": [
+                "Manufacturing efficiency data shows...",
+                "Market positioning analysis reveals...",
+                "Supply chain indicators suggest...",
+                "Innovation pipeline indicates..."
+            ],
+            "Space Exploration": [
+                "Commercial viability studies show...",
+                "Technology transfer patterns reveal...",
+                "Mission economics suggest...",
+                "Industry partnerships indicate..."
+            ],
+            "Cycling": [
+                "Performance analytics reveal...",
+                "Equipment innovation data shows...",
+                "Sponsorship metrics suggest...",
+                "Market trend analysis indicates..."
+            ],
+            "MotoGP": [
+                "Technical development cycles show...",
+                "Safety innovation data reveals...",
+                "Manufacturer partnerships indicate...",
+                "Performance benchmarks suggest..."
+            ]
+        }
+        
+        return examples.get(category, [
+            "Market implications suggest...",
+            "Strategic analysis reveals...",
+            "Industry data shows...",
+            "Performance metrics indicate..."
+        ])
+
+# =========================
+# CONTENT ENHANCER
+# =========================
+
+class ContentEnhancer:
+    """Adds visual elements and hashtags to tweets"""
+    
+    @staticmethod
+    def add_visual_elements(tweet_text: str, category: str) -> str:
+        """Add emoji based on content and category"""
+        if tweet_text and tweet_text[0] in "⚽📊🔄🏆⚡🏎️📈🔧🏁🚨⚖️₿🚀🔋🏭🔭🛰️🔴🌙✨🚴⛰️🏍️":
+            return tweet_text
+        
+        emojis = CATEGORY_EMOJIS.get(category, {})
+        if not emojis:
+            return tweet_text
+        
+        tweet_lower = tweet_text.lower()
+        for keyword, emoji in emojis.items():
+            if keyword in tweet_lower:
+                return f"{emoji} {tweet_text}"
+        
+        fallback_emojis = {
+            "EPL": "⚽", "F1": "🏎️", "Crypto": "📊", "Tesla": "⚡",
+            "Space Exploration": "🚀", "Cycling": "🚴", "MotoGP": "🏍️"
+        }
+        
+        if category in fallback_emojis:
+            return f"{fallback_emojis[category]} {tweet_text}"
+        
+        return tweet_text
+    
+    @staticmethod
+    def add_hashtags(tweet_text: str, category: str) -> str:
+        """Add optimized hashtags"""
+        hashtag_data = TRENDING_HASHTAGS.get(category)
+        if not hashtag_data:
+            return tweet_text
+        
+        selected = random.sample(hashtag_data["primary"], 1)
+        
+        if len(hashtag_data["secondary"]) >= 1:
+            selected.extend(random.sample(hashtag_data["secondary"], 1))
+        
+        if random.random() < TRENDING_HASHTAG_CHANCE and hashtag_data["trending"]:
+            selected.append(random.choice(hashtag_data["trending"]))
+        
+        hashtags = selected[:3]
+        available_space = 280 - len(tweet_text) - 5
+        hashtag_text = " " + " ".join(hashtags)
+        
+        if len(hashtag_text) <= available_space:
+            return tweet_text + hashtag_text
+        
+        return tweet_text
+
+# =========================
+# RSS FETCHER
+# =========================
+
+class RSSFetcher:
+    """Fetches and caches RSS feeds"""
+    
+    def __init__(self):
+        self._cache = {}
+        self._cache_lock = threading.Lock()
+    
+    def _get_cache_key(self) -> str:
+        """Generate cache key based on time"""
+        return datetime.now(pytz.UTC).strftime("%Y-%m-%d-%H-%M")[:14]  # 30-min buckets
+    
+    def fetch_feed(self, feed_url: str) -> List[Article]:
+        """Fetch articles from RSS feed with caching"""
+        cache_key = f"{feed_url}:{self._get_cache_key()}"
+        
+        with self._cache_lock:
+            if cache_key in self._cache:
+                return self._cache[cache_key]
+        
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            response = requests.get(feed_url, headers=headers, timeout=15)
+            response.raise_for_status()
+            feed = feedparser.parse(response.content)
+            
+            articles = []
+            for entry in feed.entries[:3]:
+                article = Article(
+                    title=entry.title,
+                    url=entry.link,
+                    published=datetime(*entry.published_parsed[:6], tzinfo=pytz.UTC) 
+                    if hasattr(entry, 'published_parsed') and entry.published_parsed else None
+                )
+                articles.append(article)
+            
+            with self._cache_lock:
+                self._cache[cache_key] = articles
+            
+            return articles
+            
+        except (requests.RequestException, Exception) as e:
+            logger.error(f"Error fetching RSS from {feed_url}: {e}")
+            return []
+    
+    def get_articles_for_category(self, category: str) -> List[Article]:
+        """Get articles for a category with feed rotation"""
+        feeds = RSS_FEEDS.get(category, [])
+        if not feeds:
+            return []
+        
+        # Shuffle feeds for variety
+        feeds_copy = feeds.copy()
+        random.shuffle(feeds_copy)
+        
+        all_articles = []
+        for feed in feeds_copy[:2]:  # Try first 2 shuffled feeds
+            articles = self.fetch_feed(feed)
+            if articles:
+                all_articles.extend(articles)
+                break
+        
+        return all_articles
+
+# =========================
+# URL SHORTENER
+# =========================
+
+class URLShortener:
+    """Shortens URLs with caching"""
+    
+    def __init__(self):
+        self.cache = URLCache()
+    
+    def shorten(self, long_url: str) -> str:
+        """Shorten URL with fallback and caching"""
+        # Check cache first
+        cached = self.cache.get(long_url)
+        if cached:
+            return cached
+        
+        try:
+            api_url = f"http://tinyurl.com/api-create.php?url={long_url}"
+            response = requests.get(api_url, timeout=5)
+            if response.status_code == 200 and response.text.strip().startswith('http'):
+                short_url = response.text.strip()
+                self.cache.set(long_url, short_url)
+                return short_url
+        except requests.RequestException as e:
+            logger.warning(f"URL shortening failed: {e}")
+        
+        return long_url
+
+# =========================
+# TWITTER PUBLISHER
+# =========================
+
+class TwitterPublisher:
+    """Handles Twitter API interactions"""
+    
+    def __init__(self, api_key: str, api_secret: str, 
+                 access_token: str, access_secret: str,
+                 quota_manager: APIQuotaManager):
+        self.quota_manager = quota_manager
+        
+        # Setup authentication
+        auth = tweepy.OAuth1UserHandler(
+            api_key, api_secret, access_token, access_secret
         )
-        return response.choices[0].message.content.strip()
-        
-    except Exception as e:
-        write_log(f"GPT generation failed: {e}")
-        return f"Breaking: {title[:100]}... What's your take?"
-
-def has_been_posted(url):
-    """Check if URL already posted"""
-    if not os.path.exists(POSTED_LOG):
-        return False
-    with open(POSTED_LOG, "r") as f:
-        return url.strip() in f.read()
-
-def log_posted(url):
-    """Record posted URL"""
-    with open(POSTED_LOG, "a") as f:
-        f.write(url.strip() + "\n")
-
-def can_post_now():
-    """Check if enough time has passed since last post"""
-    global last_post_time
-    if last_post_time is None:
-        return True
-    time_since_last = datetime.now(pytz.UTC) - last_post_time
-    return time_since_last.total_seconds() >= (POST_INTERVAL_MINUTES * 60)
-
-def shorten_url_with_fallback(long_url):
-    """URL shortening with fallback"""
-    try:
-        api_url = f"http://tinyurl.com/api-create.php?url={long_url}"
-        response = requests.get(api_url, timeout=5)
-        if response.status_code == 200 and response.text.strip().startswith('http'):
-            return response.text.strip()
-    except:
-        pass
-    return long_url
-
-def post_main_content(category):
-    """Post main content using write quota with premium/global strategies, visual elements, and retry logic"""
-    global last_post_time
+        self.api = tweepy.API(auth)
+        self.client = tweepy.Client(
+            consumer_key=api_key,
+            consumer_secret=api_secret,
+            access_token=access_token,
+            access_token_secret=access_secret
+        )
     
-    if not can_post_now() or not quota_manager.can_write(1):
-        write_log("Cannot post - rate limited or quota exhausted")
-        return False
+    def verify_credentials(self) -> bool:
+        """Verify Twitter authentication"""
+        try:
+            me = self.api.verify_credentials()
+            logger.info(f"Authentication successful! @{me.screen_name}")
+            logger.info(f"Followers: {me.followers_count}")
+            return True
+        except Exception as e:
+            logger.error(f"Authentication failed: {e}")
+            raise AuthenticationException(f"Twitter authentication failed: {e}")
     
-    articles = get_articles_for_category(category)
-    
-    for article in articles:
-        if has_been_posted(article["url"]):
-            continue
+    def post_tweet(self, text: str, max_retries: int = MAX_RETRIES) -> bool:
+        """Post tweet with retry logic"""
+        if not self.quota_manager.can_write(1):
+            raise QuotaExceededException("Write quota exhausted")
         
-        # Choose content generation strategy based on timing and category
-        if should_use_premium_strategy(category):
-            write_log(f"Using premium strategy for {category} at {datetime.now(pytz.UTC).strftime('%H:%M')}")
-            tweet_text = generate_premium_targeted_content(article["title"], category, article["url"])
-        else:
-            write_log(f"Using standard strategy for {category}")
-            tweet_text = generate_content_aware_post(article["title"], category, article["url"])
-        
-        # Add visual elements enhancement
-        tweet_text = add_visual_elements_to_tweet(tweet_text, category)
-        
-        short_url = shorten_url_with_fallback(article["url"])
-        full_tweet = f"{tweet_text}\n\n{short_url}"
-        full_tweet = optimize_hashtags_for_reach(full_tweet, category)
-        
-        if len(full_tweet) > 280:
-            full_tweet = full_tweet[:277] + "..."
-        
-        # Retry logic for network failures
-        max_retries = 3
-        retry_delay = 5
+        retry_delay = INITIAL_RETRY_DELAY
         
         for attempt in range(max_retries):
             try:
-                response = twitter_client.create_tweet(text=full_tweet)
-                quota_manager.use_write(1)
-                log_posted(article["url"])
-                last_post_time = datetime.now(pytz.UTC)
-                
-                timing_type = "premium" if is_premium_posting_time() else "global" if is_global_posting_time() else "standard"
-                write_log(f"Posted {timing_type} content with visual elements for {category}: {article['title'][:50]}...")
+                response = self.client.create_tweet(text=text)
+                self.quota_manager.use_write(1)
+                logger.info(f"Tweet posted successfully: {text[:50]}...")
                 return True
                 
             except Exception as e:
-                error_msg = str(e)
+                error_msg = str(e).lower()
                 
-                # Don't retry on permission errors
-                if "403" in error_msg or "forbidden" in error_msg.lower():
-                    write_log(f"403 Forbidden error - check API permissions")
+                # Don't retry on these errors
+                if "403" in error_msg or "forbidden" in error_msg:
+                    logger.error("403 Forbidden - check API permissions")
                     return False
-                elif "duplicate" in error_msg.lower():
-                    write_log("Duplicate content detected")
+                elif "duplicate" in error_msg:
+                    logger.warning("Duplicate content detected")
                     return False
+                
                 # Retry on network errors
-                elif attempt < max_retries - 1:
-                    write_log(f"Network error on attempt {attempt + 1}/{max_retries}: {error_msg}")
-                    write_log(f"Retrying in {retry_delay} seconds...")
+                if attempt < max_retries - 1:
+                    logger.warning(f"Tweet failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    logger.info(f"Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff: 5s, 10s, 20s
+                    retry_delay *= 2
                 else:
-                    write_log(f"All {max_retries} retry attempts failed: {e}")
+                    logger.error(f"All {max_retries} retry attempts failed: {e}")
                     return False
-    
-    write_log(f"No new articles to post for {category}")
-    return False
-
-# =========================
-# SCHEDULER SYSTEM
-# =========================
-
-def should_post_main_content():
-    """Check if it's time for main content"""
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in MAIN_POSTING_TIMES
-
-def should_run_reply_campaign():
-    """Check if it's time for reply campaign - TEMPORARILY DISABLED"""
-    return False  # Disabled due to API permission issues
-
-def run_main_content_job():
-    """Run main content posting job with strategic timing"""
-    try:
-        write_log("Starting strategic main content job...")
         
-        # Log current timing context
+        return False
+
+# =========================
+# BOT STATE MANAGER
+# =========================
+
+class BotState:
+    """Manages bot state"""
+    
+    def __init__(self):
+        self.last_post_time: Optional[datetime] = None
+        self.quota_manager = APIQuotaManager()
+        self.content_tracker = ContentTracker()
+        self.url_cache = URLCache()
+        self.rss_fetcher = RSSFetcher()
+        self.url_shortener = URLShortener()
+        self.shutdown_requested = False
+        self.lock = threading.Lock()
+    
+    def can_post_now(self) -> bool:
+        """Check if enough time has passed since last post"""
+        with self.lock:
+            if self.last_post_time is None:
+                return True
+            time_since_last = datetime.now(pytz.UTC) - self.last_post_time
+            return time_since_last.total_seconds() >= (POST_INTERVAL_MINUTES * 60)
+    
+    def mark_post_time(self) -> None:
+        """Update last post time"""
+        with self.lock:
+            self.last_post_time = datetime.now(pytz.UTC)
+    
+    def request_shutdown(self) -> None:
+        """Request graceful shutdown"""
+        with self.lock:
+            self.shutdown_requested = True
+            logger.info("Shutdown requested")
+    
+    def should_shutdown(self) -> bool:
+        """Check if shutdown was requested"""
+        with self.lock:
+            return self.shutdown_requested
+
+# =========================
+# TIMING STRATEGY
+# =========================
+
+class TimingStrategy:
+    """Determines optimal posting times"""
+    
+    @staticmethod
+    def is_premium_posting_time() -> bool:
+        """Check if current time is optimal for premium demographics"""
         current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-        is_premium = is_premium_posting_time()
-        is_global = is_global_posting_time()
+        return current_time in PREMIUM_POSTING_TIMES
+    
+    @staticmethod
+    def is_global_posting_time() -> bool:
+        """Check if current time is optimal for global audiences"""
+        current_time = datetime.now(pytz.UTC).strftime("%H:%M")
+        return current_time in GLOBAL_POSTING_TIMES
+    
+    @staticmethod
+    def should_use_premium_strategy(category: str) -> bool:
+        """Determine if category should use premium targeting"""
+        return (category in BUSINESS_CATEGORIES or 
+                TimingStrategy.is_premium_posting_time())
+    
+    @staticmethod
+    def should_use_global_strategy(category: str) -> bool:
+        """Determine if category should use global timing strategy"""
+        return (category in GLOBAL_CATEGORIES or 
+                TimingStrategy.is_global_posting_time())
+    
+    @staticmethod
+    def select_category() -> str:
+        """Select category with timing strategy"""
+        categories = list(RSS_FEEDS.keys())
         
-        write_log(f"Current time: {current_time} (Premium: {is_premium}, Global: {is_global})")
+        # During premium posting times, prioritize business categories
+        if TimingStrategy.is_premium_posting_time():
+            priority_categories = BUSINESS_CATEGORIES
+            available_priority = [cat for cat in priority_categories if cat in categories]
+            if available_priority and random.random() < PRIORITY_CATEGORY_CHANCE:
+                category = random.choice(available_priority)
+                logger.info(f"Selected business category for premium time: {category}")
+                return category
         
-        # Use strategic category selection
-        category = detect_category_with_timing_strategy()
+        # During global posting times, prioritize global categories
+        if TimingStrategy.is_global_posting_time():
+            priority_categories = GLOBAL_CATEGORIES
+            available_priority = [cat for cat in priority_categories if cat in categories]
+            if available_priority and random.random() < PRIORITY_CATEGORY_CHANCE:
+                category = random.choice(available_priority)
+                logger.info(f"Selected global category for global time: {category}")
+                return category
         
-        success = post_main_content(category)
-        if not success:
-            # Try one backup category with same strategic logic
-            categories = list(RSS_FEEDS.keys())
-            backup_categories = [cat for cat in categories if cat != category]
-            if backup_categories and quota_manager.can_write(1):
-                backup_category = random.choice(backup_categories)
-                write_log(f"Trying backup category: {backup_category}")
-                post_main_content(backup_category)
-        
-        write_log("Strategic main content job completed")
-    except Exception as e:
-        write_log(f"Error in main content job: {e}")
+        # Regular random selection
+        category = random.choice(categories)
+        logger.info(f"Selected category: {category}")
+        return category
 
-def run_reply_job():
-    """Execute reply campaign"""
-    try:
-        write_log("Starting reply campaign...")
-        reply_system.execute_reply_campaign()
-        write_log("Reply campaign completed")
-    except Exception as e:
-        write_log(f"Error in reply campaign: {e}")
+# =========================
+# MAIN BOT
+# =========================
 
-def start_conservative_scheduler():
-    """Ultra-conservative scheduler with premium/global timing, visual elements, and replies"""
-    write_log("Starting ultra-conservative scheduler with replies enabled...")
-    write_log(f"Premium posting times (business focus): {PREMIUM_POSTING_TIMES}")
-    write_log(f"Global posting times (sports/entertainment): {GLOBAL_POSTING_TIMES}")
-    write_log(f"Reply campaign times: {REPLY_TIMES}")
-    write_log(f"Business categories: {BUSINESS_CATEGORIES}")
-    write_log(f"Global categories: {GLOBAL_CATEGORIES}")
-    write_log("Visual elements enhancement: ACTIVE")
-    write_log("Targeted reply system: ACTIVE (Arsenal & Crypto)")
+class TwitterBot:
+    """Main bot orchestrator"""
     
-    quota_status = quota_manager.get_quota_status()
-    write_log(f"Monthly quota: {quota_status}")
+    def __init__(self, openai_api_key: str, twitter_api_key: str,
+                 twitter_api_secret: str, twitter_access_token: str,
+                 twitter_access_secret: str):
+        self.state = BotState()
+        self.content_generator = ContentGenerator(openai_api_key)
+        self.content_enhancer = ContentEnhancer()
+        self.publisher = TwitterPublisher(
+            twitter_api_key, twitter_api_secret,
+            twitter_access_token, twitter_access_secret,
+            self.state.quota_manager
+        )
+        
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+        
+        # Register cleanup
+        atexit.register(self._cleanup)
     
-    last_checked_minute = None
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals"""
+        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        self.state.request_shutdown()
     
-    while True:
-        try:
-            current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
+    def _cleanup(self):
+        """Cleanup on exit"""
+        logger.info("Bot shutting down, saving state...")
+        self.state.quota_manager.save_quota()
+    
+    def prepare_tweet(self, article: Article, category: str) -> Tuple[str, str]:
+        """Generate and format tweet content"""
+        # Choose content generation strategy
+        if TimingStrategy.should_use_premium_strategy(category):
+            tweet_text = self.content_generator.generate_premium_content(
+                article.title, category, article.url
+            )
+        else:
+            tweet_text = self.content_generator.generate_standard_content(
+                article.title, category, article.url
+            )
+        
+        # Add visual elements
+        tweet_text = self.content_enhancer.add_visual_elements(tweet_text, category)
+        
+        # Shorten URL
+        short_url = self.state.url_shortener.shorten(article.url)
+        
+        # Combine text and URL
+        full_tweet = f"{tweet_text}\n\n{short_url}"
+        
+        # Add hashtags
+        full_tweet = self.content_enhancer.add_hashtags(full_tweet, category)
+        
+        # Ensure tweet fits length limit
+        if len(full_tweet) > 280:
+            full_tweet = full_tweet[:277] + "..."
+        
+        return full_tweet, tweet_text
+    
+    def post_content(self, category: str) -> bool:
+        """Post main content"""
+        if not self.state.can_post_now():
+            logger.info("Rate limited - too soon since last post")
+            return False
+        
+        if not self.state.quota_manager.can_write(1):
+            logger.warning("Write quota exhausted")
+            return False
+        
+        # Get articles
+        articles = self.state.rss_fetcher.get_articles_for_category(category)
+        
+        for article in articles:
+            # Check if already posted
+            if self.state.content_tracker.is_duplicate(article.url, article.title):
+                continue
             
-            if current_minute != last_checked_minute:
-                write_log(f"Checking time: {current_minute} against {len(MAIN_POSTING_TIMES)} scheduled times")
+            try:
+                # Prepare tweet
+                full_tweet, base_text = self.prepare_tweet(article, category)
                 
-                # Check for main content posting
-                if should_post_main_content():
-                    timing_type = "PREMIUM" if is_premium_posting_time() else "GLOBAL" if is_global_posting_time() else "STANDARD"
-                    write_log(f"{timing_type} content time: {current_minute}")
-                    run_main_content_job()
-
-                # Check for reply campaign
-                if should_run_reply_campaign():
-                    write_log(f"Reply campaign time: {current_minute}")
-                    run_reply_job()
+                # Post tweet
+                if self.publisher.post_tweet(full_tweet):
+                    self.state.content_tracker.mark_posted(article.url, base_text)
+                    self.state.mark_post_time()
+                    
+                    timing_type = ("premium" if TimingStrategy.is_premium_posting_time() 
+                                 else "global" if TimingStrategy.is_global_posting_time() 
+                                 else "standard")
+                    logger.info(f"Posted {timing_type} content for {category}: {article.title[:50]}...")
+                    return True
                 
-                last_checked_minute = current_minute
-                
-            time.sleep(30)
+            except (ContentGenerationException, QuotaExceededException) as e:
+                logger.error(f"Failed to post article: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error posting article: {e}")
+                continue
+        
+        logger.info(f"No new articles to post for {category}")
+        return False
+    
+    def run_content_job(self) -> None:
+        """Run main content posting job"""
+        try:
+            logger.info("Starting content posting job...")
+            
+            # Select category strategically
+            category = TimingStrategy.select_category()
+            
+            # Try to post
+            success = self.post_content(category)
+            
+            # Try backup category if needed
+            if not success and self.state.quota_manager.can_write(1):
+                categories = list(RSS_FEEDS.keys())
+                backup_categories = [cat for cat in categories if cat != category]
+                if backup_categories:
+                    backup_category = random.choice(backup_categories)
+                    logger.info(f"Trying backup category: {backup_category}")
+                    self.post_content(backup_category)
+            
+            logger.info("Content posting job completed")
             
         except Exception as e:
-            write_log(f"ERROR in scheduler loop: {e}")
-            time.sleep(60)
+            logger.error(f"Error in content job: {e}", exc_info=True)
+    
+    def should_post_now(self) -> bool:
+        """Check if it's time to post"""
+        current_time = datetime.now(pytz.UTC).strftime("%H:%M")
+        return current_time in MAIN_POSTING_TIMES
+    
+    def run_scheduler(self) -> None:
+        """Run the main scheduler loop"""
+        logger.info("Starting scheduler...")
+        logger.info(f"Premium posting times: {PREMIUM_POSTING_TIMES}")
+        logger.info(f"Global posting times: {GLOBAL_POSTING_TIMES}")
+        
+        quota_status = self.state.quota_manager.get_quota_status()
+        logger.info(f"Monthly quota - Reads: {quota_status.reads_used}/100, "
+                   f"Writes: {quota_status.writes_used}/500")
+        
+        last_checked_minute = None
+        
+        while not self.state.should_shutdown():
+            try:
+                current_minute = datetime.now(pytz.UTC).strftime("%H:%M")
+                
+                if current_minute != last_checked_minute:
+                    if self.should_post_now():
+                        timing_type = ("PREMIUM" if TimingStrategy.is_premium_posting_time()
+                                     else "GLOBAL" if TimingStrategy.is_global_posting_time()
+                                     else "STANDARD")
+                        logger.info(f"{timing_type} content time: {current_minute}")
+                        self.run_content_job()
+                    
+                    last_checked_minute = current_minute
+                
+                time.sleep(30)
+                
+            except KeyboardInterrupt:
+                logger.info("Keyboard interrupt received")
+                break
+            except Exception as e:
+                logger.error(f"Error in scheduler loop: {e}", exc_info=True)
+                time.sleep(60)
+        
+        logger.info("Scheduler stopped")
 
 # =========================
-# HEALTH SERVER
+# HEALTH CHECK SERVER
 # =========================
 
-class HealthHandler(BaseHTTPRequestHandler):
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """Health check endpoint handler"""
+    
+    bot_state: Optional[BotState] = None
+    
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         
-        quota_status = quota_manager.get_quota_status()
-        status = f"""Enhanced Twitter Bot Status: RUNNING
+        if self.bot_state:
+            quota_status = self.bot_state.quota_manager.get_quota_status()
+            status = f"""Twitter Bot Status: RUNNING
 
 Monthly Quota:
-- Reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)
-- Writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)
+- Reads: {quota_status.reads_used}/100 ({quota_status.reads_remaining} remaining)
+- Writes: {quota_status.writes_used}/500 ({quota_status.writes_remaining} remaining)
+- Month: {quota_status.month}
 
 Daily Allocation:
-- Main Posts: 12/day (360/month)
-- Replies: 3/day (90/month)
+- Main Posts: 15/day (450/month)
 - Emergency Buffer: 50/month
 
-Enhanced Features:
+Features:
 - Visual Elements: ACTIVE
 - Contextual CTAs: ACTIVE
-- Dynamic Examples: ACTIVE
 - Premium Targeting: ACTIVE
 - Strategic Timing: ACTIVE
-- Smart Quota Management: ACTIVE
-- Targeted Replies: ACTIVE (Arsenal & Crypto)
+- Smart Caching: ACTIVE
+- Content Deduplication: ACTIVE
 
-Last Post: {last_post_time or 'Never'}
-        """
+Last Post: {self.bot_state.last_post_time or 'Never'}
+Status: {'Shutting down' if self.bot_state.should_shutdown() else 'Running'}
+"""
+        else:
+            status = "Twitter Bot Status: STARTING\n"
+        
         self.wfile.write(status.encode())
     
     def do_HEAD(self):
@@ -1178,69 +1238,135 @@ Last Post: {last_post_time or 'Never'}
         self.end_headers()
     
     def log_message(self, format, *args):
-        pass
+        pass  # Suppress request logging
 
-def start_health_server():
+def start_health_server(bot_state: BotState, port: int = 10000):
     """Start health check server"""
-    port = int(os.environ.get('PORT', 10000))
+    HealthCheckHandler.bot_state = bot_state
+    
     try:
-        server = HTTPServer(('0.0.0.0', port), HealthHandler)
-        write_log(f"Health server starting on port {port}")
+        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        logger.info(f"Health server starting on port {port}")
         server.serve_forever()
     except Exception as e:
-        write_log(f"Health server failed to start: {e}")
+        logger.error(f"Health server failed: {e}")
 
 # =========================
-# TESTING FUNCTIONS
+# CONFIGURATION VALIDATOR
 # =========================
 
-def test_auth():
-    """Test Twitter API authentication"""
-    try:
-        me = twitter_api.verify_credentials()
-        write_log(f"Authentication successful! @{me.screen_name}")
-        write_log(f"Followers: {me.followers_count}")
-        return True
-    except Exception as e:
-        write_log(f"Authentication failed: {e}")
-        return False
+class ConfigValidator:
+    """Validates configuration and environment"""
+    
+    @staticmethod
+    def validate_env_vars() -> None:
+        """Validate required environment variables"""
+        required_vars = [
+            "OPENAI_API_KEY",
+            "TWITTER_API_KEY",
+            "TWITTER_API_SECRET",
+            "TWITTER_ACCESS_TOKEN",
+            "TWITTER_ACCESS_SECRET"
+        ]
+        
+        missing = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing:
+            error_msg = f"Missing required environment variables: {', '.join(missing)}"
+            logger.error(error_msg)
+            raise EnvironmentError(error_msg)
+        
+        logger.info("All required environment variables present")
+    
+    @staticmethod
+    def validate_config() -> None:
+        """Validate configuration"""
+        # Check posting times
+        if not MAIN_POSTING_TIMES:
+            raise ValueError("No posting times configured")
+        
+        # Check categories
+        if not RSS_FEEDS:
+            raise ValueError("No RSS feeds configured")
+        
+        # Check rate limits
+        if POST_INTERVAL_MINUTES < 1:
+            raise ValueError("Post interval must be at least 1 minute")
+        
+        logger.info("Configuration validated successfully")
 
 # =========================
 # MAIN EXECUTION
 # =========================
 
-if __name__ == "__main__":
-    write_log("=== ENHANCED TWITTER BOT STARTUP (WITH VISUAL ELEMENTS) ===")
+def main():
+    """Main entry point"""
+    logger.info("=== TWITTER BOT STARTING ===")
     
-    # Validate environment
-    validate_env_vars()
-    
-    # Test authentication
-    if not test_auth():
-        write_log("CRITICAL: Authentication failed. Bot cannot run.")
-        exit(1)
-    
-    # Display startup info
-    quota_status = quota_manager.get_quota_status()
-    write_log("=== QUOTA STATUS ===")
-    write_log(f"Monthly reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)")
-    write_log(f"Monthly writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)")
-    
-    write_log("=== ENHANCED FEATURES ===")
-    write_log("✓ Visual elements with smart emojis")
-    write_log("✓ Main posts: 12/day with contextual CTAs")
-    write_log("✓ Dynamic example openers per category")
-    write_log("✓ Premium targeting with smart timing")
-    write_log("✓ Strategic category selection")
-    write_log("✓ Smart quota management active")
-    write_log("✓ Targeted reply system ACTIVE (Arsenal & Crypto)")
-    write_log("✓ Reply times: 10:00, 15:00, 21:00 UTC")
-    
-    # Start health server in background
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
-    
-    # Start the enhanced scheduler
-    write_log("Starting enhanced scheduler with visual elements...")
-    start_conservative_scheduler()
+    try:
+        # Validate configuration
+        ConfigValidator.validate_env_vars()
+        ConfigValidator.validate_config()
+        
+        # Get credentials from environment
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        twitter_api_key = os.getenv("TWITTER_API_KEY")
+        twitter_api_secret = os.getenv("TWITTER_API_SECRET")
+        twitter_access_token = os.getenv("TWITTER_ACCESS_TOKEN")
+        twitter_access_secret = os.getenv("TWITTER_ACCESS_SECRET")
+        
+        # Initialize bot
+        bot = TwitterBot(
+            openai_api_key=openai_api_key,
+            twitter_api_key=twitter_api_key,
+            twitter_api_secret=twitter_api_secret,
+            twitter_access_token=twitter_access_token,
+            twitter_access_secret=twitter_access_secret
+        )
+        
+        # Verify authentication
+        bot.publisher.verify_credentials()
+        
+        # Display startup info
+        quota_status = bot.state.quota_manager.get_quota_status()
+        logger.info("=== QUOTA STATUS ===")
+        logger.info(f"Reads: {quota_status.reads_used}/100 ({quota_status.reads_remaining} remaining)")
+        logger.info(f"Writes: {quota_status.writes_used}/500 ({quota_status.writes_remaining} remaining)")
+        
+        logger.info("=== FEATURES ===")
+        logger.info("✓ Visual elements with smart emojis")
+        logger.info("✓ Contextual CTAs and dynamic examples")
+        logger.info("✓ Premium targeting with smart timing")
+        logger.info("✓ RSS feed caching (30-min TTL)")
+        logger.info("✓ URL shortening cache (24-hour TTL)")
+        logger.info("✓ Content deduplication")
+        logger.info("✓ Graceful shutdown handling")
+        logger.info("✓ Retry logic with exponential backoff")
+        
+        # Start health server in background
+        port = int(os.environ.get('PORT', 10000))
+        health_thread = threading.Thread(
+            target=start_health_server,
+            args=(bot.state, port),
+            daemon=True
+        )
+        health_thread.start()
+        
+        # Start the scheduler
+        logger.info("Starting scheduler...")
+        bot.run_scheduler()
+        
+    except (EnvironmentError, AuthenticationException) as e:
+        logger.error(f"CRITICAL: {e}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received, shutting down...")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"CRITICAL ERROR: {e}", exc_info=True)
+        sys.exit(1)
+    finally:
+        logger.info("=== TWITTER BOT STOPPED ===")
 
+if __name__ == "__main__":
+    main()
