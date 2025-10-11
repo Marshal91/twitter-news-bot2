@@ -674,7 +674,16 @@ def start_health_server(bot, port):
     except Exception as e:
         logger.error(f"CRITICAL: Health server failed on port {port}: {e}")
         raise
-
+        
+def find_available_port(start_port: int) -> int:
+    port = start_port
+    while True:
+        try:
+            server = HTTPServer(('0.0.0.0', port), HealthHandler)
+            server.server_close()
+            return port
+        except:
+            port += 1
 # =========================
 # MAIN
 # =========================
