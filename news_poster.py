@@ -23,6 +23,8 @@ from logging.handlers import RotatingFileHandler
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
+
+
 # Try to load .env file if it exists
 try:
     if os.path.exists('.env'):
@@ -34,12 +36,29 @@ except Exception as e:
     print(f"INFO: Could not load .env file: {e}")
 
 # =========================
+# PERSISTENT STORAGE CONFIGURATION
+# =========================
+
+# Persistent storage path (configurable for cloud deployments)
+# For Render: Set PERSISTENT_STORAGE_PATH=/var/data in environment variables
+# For local: Leave unset (defaults to current directory)
+STORAGE_PATH = os.getenv("PERSISTENT_STORAGE_PATH", ".")
+
+# Ensure storage directory exists
+try:
+    os.makedirs(STORAGE_PATH, exist_ok=True)
+    print(f"INFO: Using persistent storage path: {STORAGE_PATH}")
+except Exception as e:
+    print(f"WARNING: Could not create storage directory: {e}")
+    STORAGE_PATH = "."  # Fallback to current directory
+
+# =========================
 # API QUOTA MANAGEMENT
 # =========================
 
 class APIQuotaManager:
     def __init__(self):
-        self.quota_file = "api_quota.json"
+        self.quota_file = os.path.join(STORAGE_PATH, "api_quota.json")
         self.load_quota()
     
     def load_quota(self):
@@ -130,8 +149,8 @@ class PerformanceLearningSystem:
     """
     
     def __init__(self):
-        self.performance_db = "tweet_performance.json"
-        self.learning_insights = "learning_insights.json"
+        self.performance_db = os.path.join(STORAGE_PATH, "tweet_performance.json")
+        self.learning_insights = os.path.join(STORAGE_PATH, "learning_insights.json")
         self.min_tweets_for_learning = 10
         self.load_performance_data()
         self.load_learning_insights()
@@ -557,8 +576,8 @@ quota_manager = APIQuotaManager()
 learning_system = PerformanceLearningSystem()
 
 LOG_FILE = "bot_log.txt"
-POSTED_LOG = "posted_links.txt"
-CONTENT_HASH_LOG = "posted_content_hashes.txt"
+POSTED_LOG = os.path.join(STORAGE_PATH, "posted_links.txt")
+CONTENT_HASH_LOG = os.path.join(STORAGE_PATH, "posted_content_hashes.txt")
 
 DAILY_POST_LIMIT = 15
 POST_INTERVAL_MINUTES = 90
@@ -786,7 +805,7 @@ def write_log(message, level="info"):
 
 class TargetedReplySystem:
     def __init__(self):
-        self.reply_log_file = "replied_tweets.json"
+        self.reply_log_file = os.path.join(STORAGE_PATH, "replied_tweets.json")
         self.daily_reply_limit = 3
         self.load_reply_log()
         
@@ -1790,3 +1809,4 @@ if __name__ == "__main__":
         learning_system.save_learning_insights()
         
         exit(1)
+
