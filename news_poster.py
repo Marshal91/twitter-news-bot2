@@ -260,7 +260,7 @@ class PerformanceLearningSystem:
         try:
             tweets = twitter_client.get_tweets(
                 ids=tweet_ids[:100],
-                tweet_fields=['public_metrics', 'created_at']
+                tweet_fields=['public_metrics', 'non_public_metrics', 'created_at']
             )
             
             quota_manager.use_read(1)
@@ -281,9 +281,9 @@ class PerformanceLearningSystem:
                         "retweets": metrics['retweet_count'],
                         "replies": metrics['reply_count'],
                         "quotes": metrics['quote_count'],
-                        "impressions": metrics.get('impression_count', 0),
+                        "impressions": tweet.non_public_metrics.get('impression_count', 0) if hasattr(tweet, 'non_public_metrics') else 0,,
                         "engagement_score": engagement_score,
-                        "engagement_rate": engagement_score / max(metrics.get('impression_count', 1), 1)
+                        "engagement_rate": engagement_score / max(tweet.non_public_metrics.get('impression_count', 1) if hasattr(tweet, 'non_public_metrics') else 1, 1)
                     }
             
             return metrics_dict
@@ -1809,4 +1809,5 @@ if __name__ == "__main__":
         learning_system.save_learning_insights()
         
         exit(1)
+
 
