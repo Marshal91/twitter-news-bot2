@@ -281,7 +281,7 @@ class PerformanceLearningSystem:
                         "retweets": metrics['retweet_count'],
                         "replies": metrics['reply_count'],
                         "quotes": metrics['quote_count'],
-                        "impressions": tweet.non_public_metrics.get('impression_count', 0) if hasattr(tweet, 'non_public_metrics') else 0,,
+                        "impressions": tweet.non_public_metrics.get('impression_count', 0) if hasattr(tweet, 'non_public_metrics') else 0,
                         "engagement_score": engagement_score,
                         "engagement_rate": engagement_score / max(tweet.non_public_metrics.get('impression_count', 1) if hasattr(tweet, 'non_public_metrics') else 1, 1)
                     }
@@ -1809,5 +1809,6 @@ if __name__ == "__main__":
         learning_system.save_learning_insights()
         
         exit(1)
+
 
 
