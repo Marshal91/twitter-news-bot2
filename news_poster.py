@@ -723,6 +723,292 @@ PREMIUM_CONTENT_STRATEGIES = {
     }
 }
 
+# Add this after the PREMIUM_CONTENT_STRATEGIES dictionary (around line 280)
+
+# =========================
+# ENGAGEMENT BAITING STRATEGIES
+# =========================
+
+ENGAGEMENT_BAIT_PATTERNS = {
+    "EPL": {
+        "controversial_takes": [
+            "Unpopular opinion:",
+            "Hot take:",
+            "Nobody wants to admit this but",
+            "The data doesn't lie:",
+            "Change my mind:"
+        ],
+        "debate_starters": [
+            "{statement} Overrated or underrated?",
+            "Is {player/team} actually {controversial_claim}?",
+            "Why is nobody talking about {statement}?",
+            "Real talk: {controversial_statement}",
+            "{statement} - and it's not even close."
+        ],
+        "divisive_claims": [
+            "better than", "overrated", "underrated", "fraud", "carry",
+            "exposed", "past their prime", "never was", "fluke"
+        ]
+    },
+    "F1": {
+        "controversial_takes": [
+            "Unpopular opinion:",
+            "The truth nobody wants to hear:",
+            "Let's be honest:",
+            "Hot take:",
+            "Controversial but true:"
+        ],
+        "debate_starters": [
+            "{driver} vs {driver} - and it's not even close",
+            "Is {team} being carried by {factor}?",
+            "Why does everyone ignore {controversial_fact}?",
+            "{statement} Agree or disagree?",
+            "Real question: Is {driver} actually {claim}?"
+        ],
+        "divisive_claims": [
+            "overrated", "lucky", "carried by the car", "past their peak",
+            "never was that good", "only won because", "exposed"
+        ]
+    },
+    "Crypto": {
+        "controversial_takes": [
+            "Unpopular opinion:",
+            "Hard truth:",
+            "Nobody wants to hear this but",
+            "Controversial take:",
+            "Real talk:"
+        ],
+        "debate_starters": [
+            "Is {coin} actually {controversial_claim}?",
+            "{statement} - change my mind",
+            "Why is nobody talking about {risk/opportunity}?",
+            "{coin} vs {coin} - which ages better?",
+            "Hot take: {controversial_statement}"
+        ],
+        "divisive_claims": [
+            "dead", "scam", "overvalued", "undervalued", "pump and dump",
+            "ponzi", "outdated", "will flip", "going to zero"
+        ]
+    },
+    "Tesla": {
+        "controversial_takes": [
+            "Unpopular opinion:",
+            "The data shows:",
+            "Nobody wants to admit:",
+            "Controversial but true:",
+            "Hot take:"
+        ],
+        "debate_starters": [
+            "Is Tesla actually {controversial_claim}?",
+            "{competitor} vs Tesla - and why it matters",
+            "Why aren't we talking about {issue}?",
+            "{statement} Overhyped or undervalued?",
+            "Real talk: {controversial_statement}"
+        ],
+        "divisive_claims": [
+            "overvalued", "behind", "ahead of", "can't compete",
+            "losing market share", "dominating", "failing at"
+        ]
+    },
+    "Space Exploration": {
+        "controversial_takes": [
+            "Unpopular opinion:",
+            "The hard truth:",
+            "Nobody's saying this but",
+            "Controversial take:",
+            "Hot take:"
+        ],
+        "debate_starters": [
+            "{company} vs {company} - who wins?",
+            "Is {project} actually {controversial_claim}?",
+            "Why is everyone ignoring {fact}?",
+            "{statement} Revolutionary or overhyped?",
+            "Real question: {controversial_statement}"
+        ],
+        "divisive_claims": [
+            "waste of money", "behind schedule", "ahead of", "can't deliver",
+            "overengineered", "outdated approach", "revolutionary"
+        ]
+    },
+    "Cycling": {
+        "controversial_takes": [
+            "Unpopular opinion:",
+            "Hot take:",
+            "Nobody wants to say this but",
+            "Controversial but true:",
+            "Real talk:"
+        ],
+        "debate_starters": [
+            "{rider} vs {rider} - who's actually better?",
+            "Is {team} being carried by {factor}?",
+            "Why is nobody discussing {controversial_fact}?",
+            "{statement} Overrated or underrated?",
+            "{controversial_statement} - change my mind"
+        ],
+        "divisive_claims": [
+            "overrated", "past their prime", "carried by the team",
+            "lucky", "never was", "one-hit wonder"
+        ]
+    },
+    "MotoGP": {
+        "controversial_takes": [
+            "Unpopular opinion:",
+            "Hot take:",
+            "The truth:",
+            "Controversial but true:",
+            "Nobody wants to admit:"
+        ],
+        "debate_starters": [
+            "{rider} vs {rider} - and it's not close",
+            "Is {rider} actually {controversial_claim}?",
+            "Why aren't we talking about {fact}?",
+            "{statement} Agree or disagree?",
+            "Real talk: {controversial_statement}"
+        ],
+        "divisive_claims": [
+            "overrated", "carried by the bike", "lucky", "past their peak",
+            "never deserved", "fluke", "exposed"
+        ]
+    }
+}
+
+# Comparison templates for engagement
+COMPARISON_TEMPLATES = {
+    "EPL": [
+        "{player1} vs {player2} in {metric}",
+        "Who had the better {timeframe}: {team1} or {team2}?",
+        "{manager1}'s {team1} vs {manager2}'s {team2} - who wins?"
+    ],
+    "F1": [
+        "{driver1} vs {driver2} - who's the real GOAT?",
+        "{team1} dominance vs {team2} dominance - which was more impressive?",
+        "{era1} F1 vs {era2} F1 - which was better?"
+    ],
+    "Crypto": [
+        "{coin1} vs {coin2} - which survives the next bear market?",
+        "2017 bull run vs 2021 bull run - which was crazier?",
+        "{technology1} vs {technology2} - which wins long term?"
+    ]
+}
+
+def should_use_engagement_bait():
+    """Decide if we should use engagement bait (30% of posts)"""
+    return random.random() < 0.3
+
+def generate_engagement_bait_post(title, category, article_url):
+    """Generate a provocative post designed to drive engagement through debate"""
+    
+    if category not in ENGAGEMENT_BAIT_PATTERNS:
+        return generate_content_aware_post(title, category, article_url)
+    
+    patterns = ENGAGEMENT_BAIT_PATTERNS[category]
+    strategy = PREMIUM_CONTENT_STRATEGIES.get(category, {})
+    
+    # Choose engagement style
+    bait_style = random.choice(["controversial_take", "debate_starter", "comparison"])
+    
+    if bait_style == "controversial_take":
+        opener = random.choice(patterns["controversial_takes"])
+        prompt = f"""Create a provocative Twitter post about: {title}
+
+Style: Controversial hot take that sparks debate
+Opener: "{opener}"
+Category: {category}
+
+Requirements:
+- Start with the opener phrase
+- Make a bold, debatable claim based on the article
+- Be provocative but not offensive
+- Drive replies and quote tweets
+- Under 180 characters (leave room for URL and hashtags)
+- No buzzwords, be direct and bold
+
+Write ONLY the tweet text:"""
+
+    elif bait_style == "debate_starter":
+        template = random.choice(patterns["debate_starters"])
+        prompt = f"""Create a debate-starting Twitter post about: {title}
+
+Style: Question that forces people to pick sides
+Template style: "{template}"
+Category: {category}
+
+Requirements:
+- Frame as a question or comparison
+- Make people want to defend their position
+- Be thought-provoking, not trolling
+- Drive engagement through disagreement
+- Under 180 characters (leave room for URL and hashtags)
+- End with a question or call to pick sides
+
+Write ONLY the tweet text:"""
+
+    else:  # comparison
+        prompt = f"""Create a comparison-based Twitter post about: {title}
+
+Style: "X vs Y" or ranking that sparks debate
+Category: {category}
+
+Requirements:
+- Frame as direct comparison or ranking
+- Make it debatable (no obvious answers)
+- Invite disagreement and discussion
+- Under 180 characters (leave room for URL and hashtags)
+- Use "vs" or "better than" language
+- Be bold and definitive
+
+Write ONLY the tweet text:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": f"You create provocative Twitter content that drives engagement through debate and discussion. Focus on bold takes that make people want to reply and argue their position. Stay within category expertise: {category}."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100,
+            temperature=0.85  # Higher temperature for more bold takes
+        )
+        
+        bait_text = response.choices[0].message.content.strip()
+        
+        # Ensure it ends with engagement driver
+        if not any(char in bait_text for char in ['?', ':', '...']):
+            engagement_enders = [
+                "Thoughts?",
+                "Agree or disagree?",
+                "Change my mind.",
+                "Who's wrong here?",
+                "Fight me."
+            ]
+            if len(bait_text) < 160:
+                bait_text += f" {random.choice(engagement_enders)}"
+        
+        write_log(f"🔥 Generated engagement bait: {bait_text[:50]}...")
+        return bait_text
+        
+    except Exception as e:
+        write_log(f"Engagement bait generation failed: {e}")
+        return generate_content_aware_post(title, category, article_url)
+
+def add_poll_option_tease(tweet_text):
+    """Add text that suggests a poll-like question to drive replies"""
+    poll_phrases = [
+        "A or B?",
+        "Which side are you on?",
+        "Team A or Team B?",
+        "Pick one:",
+        "This or that?"
+    ]
+    
+    if len(tweet_text) < 200 and not any(phrase in tweet_text for phrase in poll_phrases):
+        if random.random() < 0.3:
+            return f"{tweet_text} {random.choice(poll_phrases)}"
+    
+    return tweet_text
+
+
+
 TRENDING_HASHTAGS = {
     "EPL": {
         "primary": ["#PremierLeague", "#EPL", "#Football"],
@@ -1809,6 +2095,7 @@ if __name__ == "__main__":
         learning_system.save_learning_insights()
         
         exit(1)
+
 
 
 
