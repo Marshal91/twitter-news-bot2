@@ -1,7 +1,8 @@
 """
-Complete Self-Learning Twitter Bot with Performance Analytics
+Complete Self-Learning Twitter Bot with Performance Analytics & Engagement Bait
 API Limits: 100 reads/month (3/day), 500 writes/month (12 posts + 3 replies/day)
 Enhanced with machine learning capabilities that adapt based on performance
+NOW WITH: 30% Engagement Bait posts for 2-3x higher engagement
 """
 
 import os
@@ -23,8 +24,6 @@ from logging.handlers import RotatingFileHandler
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
-
-
 # Try to load .env file if it exists
 try:
     if os.path.exists('.env'):
@@ -39,18 +38,14 @@ except Exception as e:
 # PERSISTENT STORAGE CONFIGURATION
 # =========================
 
-# Persistent storage path (configurable for cloud deployments)
-# For Render: Set PERSISTENT_STORAGE_PATH=/var/data in environment variables
-# For local: Leave unset (defaults to current directory)
 STORAGE_PATH = os.getenv("PERSISTENT_STORAGE_PATH", ".")
 
-# Ensure storage directory exists
 try:
     os.makedirs(STORAGE_PATH, exist_ok=True)
     print(f"INFO: Using persistent storage path: {STORAGE_PATH}")
 except Exception as e:
     print(f"WARNING: Could not create storage directory: {e}")
-    STORAGE_PATH = "."  # Fallback to current directory
+    STORAGE_PATH = "."
 
 # =========================
 # API QUOTA MANAGEMENT
@@ -146,6 +141,7 @@ class PerformanceLearningSystem:
     """
     Analyzes tweet performance and adapts strategies based on what works.
     Uses read quota efficiently: 1 read per analysis session (daily).
+    NOW TRACKS: Engagement bait effectiveness
     """
     
     def __init__(self):
@@ -189,6 +185,7 @@ class PerformanceLearningSystem:
                     "content_style_scores": {},
                     "emoji_impact": {},
                     "cta_effectiveness": {},
+                    "engagement_bait_effectiveness": {},
                     "best_practices": [],
                     "avoid_patterns": []
                 }
@@ -201,6 +198,7 @@ class PerformanceLearningSystem:
                 "content_style_scores": {},
                 "emoji_impact": {},
                 "cta_effectiveness": {},
+                "engagement_bait_effectiveness": {},
                 "best_practices": [],
                 "avoid_patterns": []
             }
@@ -221,7 +219,7 @@ class PerformanceLearningSystem:
         except Exception as e:
             logging.error(f"Error saving insights: {e}")
     
-    def record_tweet_posted(self, tweet_id, tweet_text, category, time_slot, hashtags, has_emoji, has_cta):
+    def record_tweet_posted(self, tweet_id, tweet_text, category, time_slot, hashtags, has_emoji, has_cta, is_engagement_bait=False):
         """Record when a tweet is posted for later analysis"""
         tweet_record = {
             "id": str(tweet_id),
@@ -231,6 +229,7 @@ class PerformanceLearningSystem:
             "hashtags": hashtags,
             "has_emoji": has_emoji,
             "has_cta": has_cta,
+            "is_engagement_bait": is_engagement_bait,
             "posted_at": datetime.now(pytz.UTC).isoformat(),
             "analyzed": False,
             "metrics": None
@@ -238,7 +237,8 @@ class PerformanceLearningSystem:
         
         self.performance_data["tweets"].append(tweet_record)
         self.save_performance_data()
-        write_log(f"📊 Recorded tweet {tweet_id} for learning analysis")
+        bait_status = "🔥 ENGAGEMENT BAIT" if is_engagement_bait else "📊 Standard"
+        write_log(f"{bait_status} - Recorded tweet {tweet_id} for learning analysis")
     
     def should_analyze_performance(self):
         """Check if it's time to analyze performance (once daily)"""
@@ -260,7 +260,7 @@ class PerformanceLearningSystem:
         try:
             tweets = twitter_client.get_tweets(
                 ids=tweet_ids[:100],
-                tweet_fields=['public_metrics', 'non_public_metrics', 'created_at']
+                tweet_fields=['public_metrics', 'created_at']
             )
             
             quota_manager.use_read(1)
@@ -281,9 +281,7 @@ class PerformanceLearningSystem:
                         "retweets": metrics['retweet_count'],
                         "replies": metrics['reply_count'],
                         "quotes": metrics['quote_count'],
-                        #"impressions": tweet.non_public_metrics.get('impression_count', 0) if hasattr(tweet, 'non_public_metrics') else 0,
-                        #"engagement_score": engagement_score,
-                        #"engagement_rate": engagement_score / max(tweet.non_public_metrics.get('impression_count', 1) if hasattr(tweet, 'non_public_metrics') else 1, 1)
+                        "engagement_score": engagement_score
                     }
             
             return metrics_dict
@@ -323,6 +321,7 @@ class PerformanceLearningSystem:
         self._analyze_hashtag_effectiveness()
         self._analyze_emoji_impact()
         self._analyze_cta_effectiveness()
+        self._analyze_engagement_bait_effectiveness()
         self._identify_best_practices()
         
         self.performance_data["last_analysis"] = datetime.now(pytz.UTC).isoformat()
@@ -435,6 +434,25 @@ class PerformanceLearningSystem:
                                     (sum(cta_stats["without_cta"]) / len(cta_stats["without_cta"]))
             }
     
+    def _analyze_engagement_bait_effectiveness(self):
+        """Analyze effectiveness of engagement bait posts"""
+        bait_stats = {"engagement_bait": [], "regular": []}
+        
+        for tweet in self.performance_data["tweets"]:
+            if tweet["analyzed"] and tweet["metrics"]:
+                key = "engagement_bait" if tweet.get("is_engagement_bait", False) else "regular"
+                bait_stats[key].append(tweet["metrics"]["engagement_score"])
+        
+        if bait_stats["engagement_bait"] and bait_stats["regular"]:
+            self.insights["engagement_bait_effectiveness"] = {
+                "engagement_bait_avg": sum(bait_stats["engagement_bait"]) / len(bait_stats["engagement_bait"]),
+                "regular_avg": sum(bait_stats["regular"]) / len(bait_stats["regular"]),
+                "improvement_factor": (sum(bait_stats["engagement_bait"]) / len(bait_stats["engagement_bait"])) / 
+                                    (sum(bait_stats["regular"]) / len(bait_stats["regular"])),
+                "bait_count": len(bait_stats["engagement_bait"]),
+                "regular_count": len(bait_stats["regular"])
+            }
+    
     def _identify_best_practices(self):
         """Identify best practices from top-performing tweets"""
         analyzed_tweets = [t for t in self.performance_data["tweets"] if t["analyzed"] and t["metrics"]]
@@ -473,6 +491,10 @@ class PerformanceLearningSystem:
         cta_in_top = sum(1 for t in top_10_percent if t["has_cta"])
         if cta_in_top / len(top_10_percent) > 0.7:
             best_practices.append("CTAs drive more engagement")
+        
+        bait_in_top = sum(1 for t in top_10_percent if t.get("is_engagement_bait", False))
+        if bait_in_top / len(top_10_percent) > 0.5:
+            best_practices.append("Engagement bait posts dominate top performers")
         
         self.insights["best_practices"] = best_practices
         
@@ -515,6 +537,11 @@ class PerformanceLearningSystem:
         if self.insights.get("cta_effectiveness"):
             improvement = self.insights["cta_effectiveness"]["improvement_factor"]
             write_log(f"❓ CTA Impact: {improvement:.2f}x engagement boost")
+        
+        if self.insights.get("engagement_bait_effectiveness"):
+            improvement = self.insights["engagement_bait_effectiveness"]["improvement_factor"]
+            bait_count = self.insights["engagement_bait_effectiveness"]["bait_count"]
+            write_log(f"🔥 Engagement Bait Impact: {improvement:.2f}x boost ({bait_count} bait posts tested)")
         
         for practice in self.insights["best_practices"]:
             write_log(f"✓ {practice}")
@@ -723,8 +750,6 @@ PREMIUM_CONTENT_STRATEGIES = {
     }
 }
 
-# Add this after the PREMIUM_CONTENT_STRATEGIES dictionary (around line 280)
-
 # =========================
 # ENGAGEMENT BAITING STRATEGIES
 # =========================
@@ -872,7 +897,6 @@ ENGAGEMENT_BAIT_PATTERNS = {
     }
 }
 
-# Comparison templates for engagement
 COMPARISON_TEMPLATES = {
     "EPL": [
         "{player1} vs {player2} in {metric}",
@@ -902,7 +926,6 @@ def generate_engagement_bait_post(title, category, article_url):
         return generate_content_aware_post(title, category, article_url)
     
     patterns = ENGAGEMENT_BAIT_PATTERNS[category]
-    strategy = PREMIUM_CONTENT_STRATEGIES.get(category, {})
     
     # Choose engagement style
     bait_style = random.choice(["controversial_take", "debate_starter", "comparison"])
@@ -967,7 +990,7 @@ Write ONLY the tweet text:"""
                 {"role": "user", "content": prompt}
             ],
             max_tokens=100,
-            temperature=0.85  # Higher temperature for more bold takes
+            temperature=0.85
         )
         
         bait_text = response.choices[0].message.content.strip()
@@ -1006,8 +1029,6 @@ def add_poll_option_tease(tweet_text):
             return f"{tweet_text} {random.choice(poll_phrases)}"
     
     return tweet_text
-
-
 
 TRENDING_HASHTAGS = {
     "EPL": {
@@ -1084,180 +1105,6 @@ def write_log(message, level="info"):
         logging.error(message)
     else:
         logging.info(message)
-
-# =========================
-# TARGETED REPLY SYSTEM
-# =========================
-
-class TargetedReplySystem:
-    def __init__(self):
-        self.reply_log_file = os.path.join(STORAGE_PATH, "replied_tweets.json")
-        self.daily_reply_limit = 3
-        self.load_reply_log()
-        
-    def load_reply_log(self):
-        """Load reply history"""
-        try:
-            if os.path.exists(self.reply_log_file):
-                with open(self.reply_log_file, 'r') as f:
-                    self.reply_log = json.load(f)
-            else:
-                self.reply_log = {
-                    "date": datetime.now(pytz.UTC).strftime("%Y-%m-%d"),
-                    "today_count": 0,
-                    "replied_ids": []
-                }
-        except:
-            self.reply_log = {
-                "date": datetime.now(pytz.UTC).strftime("%Y-%m-%d"),
-                "today_count": 0,
-                "replied_ids": []
-            }
-    
-    def save_reply_log(self):
-        """Save reply history"""
-        with open(self.reply_log_file, 'w') as f:
-            json.dump(self.reply_log, f, indent=2)
-    
-    def can_reply_today(self):
-        """Check if we can still reply today"""
-        current_date = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
-        
-        if self.reply_log["date"] != current_date:
-            self.reply_log = {
-                "date": current_date,
-                "today_count": 0,
-                "replied_ids": []
-            }
-            self.save_reply_log()
-        
-        return self.reply_log["today_count"] < self.daily_reply_limit
-    
-    def search_targeted_tweets(self, query, max_results=5):
-        """Search for tweets about Arsenal or Crypto"""
-        if not quota_manager.can_read(1):
-            write_log("Cannot search - read quota exhausted")
-            return []
-        
-        try:
-            tweets = twitter_client.search_recent_tweets(
-                query=query,
-                max_results=max_results,
-                tweet_fields=['author_id', 'created_at', 'public_metrics']
-            )
-            
-            quota_manager.use_read(1)
-            
-            if tweets.data:
-                new_tweets = [
-                    tweet for tweet in tweets.data 
-                    if str(tweet.id) not in self.reply_log["replied_ids"]
-                ]
-                return new_tweets
-            return []
-            
-        except Exception as e:
-            write_log(f"Error searching tweets: {e}")
-            return []
-    
-    def generate_reply(self, tweet_text, topic):
-        """Generate contextual reply using GPT"""
-        
-        prompts = {
-            "Arsenal": """Create a thoughtful reply to this Arsenal tweet: "{tweet_text}"
-
-Requirements:
-- Show genuine Arsenal knowledge and passion
-- Add value to the conversation (insight, question, or perspective)
-- Keep it under 200 characters
-- Be conversational, not spammy
-- No hashtags or self-promotion
-
-Write ONLY the reply text:""",
-            
-            "Crypto": """Create an insightful reply to this crypto tweet: "{tweet_text}"
-
-Requirements:
-- Demonstrate crypto/blockchain knowledge
-- Provide analytical perspective or thoughtful question
-- Keep it under 200 characters
-- Professional tone, not financial advice
-- No hashtags or promotional content
-
-Write ONLY the reply text:"""
-        }
-        
-        try:
-            prompt = prompts[topic].format(tweet_text=tweet_text)
-            
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": f"You're a knowledgeable {topic} enthusiast who adds value to conversations with insights and thoughtful questions."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=100,
-                temperature=0.7
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            write_log(f"Error generating reply: {e}")
-            return None
-    
-    def post_reply(self, tweet_id, reply_text):
-        """Post reply with quota check"""
-        if not quota_manager.can_write(1):
-            write_log("Cannot reply - write quota exhausted")
-            return False
-        
-        try:
-            twitter_client.create_tweet(
-                text=reply_text,
-                in_reply_to_tweet_id=tweet_id
-            )
-            
-            quota_manager.use_write(1)
-            self.reply_log["today_count"] += 1
-            self.reply_log["replied_ids"].append(str(tweet_id))
-            self.save_reply_log()
-            
-            write_log(f"Posted reply to tweet {tweet_id}")
-            return True
-            
-        except Exception as e:
-            write_log(f"Error posting reply: {e}")
-            return False
-    
-    def execute_reply_campaign(self):
-        """Execute targeted reply campaign"""
-        if not self.can_reply_today():
-            write_log("Daily reply limit reached")
-            return
-        
-        searches = [
-            ("Arsenal", "Arsenal FC -filter:retweets -filter:replies lang:en", 5),
-            ("Crypto", "Bitcoin OR Ethereum OR crypto -filter:retweets -filter:replies lang:en", 5)
-        ]
-        
-        for topic, query, max_results in searches:
-            if not self.can_reply_today():
-                break
-            
-            write_log(f"Searching for {topic} tweets...")
-            tweets = self.search_targeted_tweets(query, max_results)
-            
-            for tweet in tweets:
-                if not self.can_reply_today():
-                    break
-                
-                reply_text = self.generate_reply(tweet.text, topic)
-                if reply_text:
-                    success = self.post_reply(tweet.id, reply_text)
-                    if success:
-                        write_log(f"Replied to {topic} tweet: {tweet.text[:50]}...")
-                        time.sleep(60)
-
-reply_system = TargetedReplySystem()
 
 # =========================
 # VISUAL ELEMENTS ENHANCEMENT
@@ -1659,7 +1506,7 @@ def shorten_url_with_fallback(long_url):
     return long_url
 
 def post_main_content_with_learning(category):
-    """Enhanced posting with performance recording and learning"""
+    """Enhanced posting with performance recording, learning, and ENGAGEMENT BAIT"""
     global last_post_time
     
     if not can_post_now() or not quota_manager.can_write(1):
@@ -1677,11 +1524,21 @@ def post_main_content_with_learning(category):
         if has_been_posted(article["url"]):
             continue
         
+        # ===== ENGAGEMENT BAIT INTEGRATION =====
+        use_engagement_bait = should_use_engagement_bait()
         use_premium = should_use_premium_strategy(category)
-        if use_premium:
+        
+        if use_engagement_bait:
+            write_log(f"🔥 Using ENGAGEMENT BAIT strategy for {category}")
+            tweet_text = generate_engagement_bait_post(article["title"], category, article["url"])
+            tweet_text = add_poll_option_tease(tweet_text)
+        elif use_premium:
+            write_log(f"💼 Using PREMIUM strategy for {category}")
             tweet_text = generate_premium_targeted_content(article["title"], category, article["url"])
         else:
+            write_log(f"📰 Using STANDARD strategy for {category}")
             tweet_text = generate_content_aware_post(article["title"], category, article["url"])
+        # ===== END ENGAGEMENT BAIT INTEGRATION =====
         
         has_emoji = learning_system.should_use_emoji()
         if has_emoji:
@@ -1710,6 +1567,7 @@ def post_main_content_with_learning(category):
                 log_posted(article["url"])
                 last_post_time = datetime.now(pytz.UTC)
                 
+                # ===== RECORD ENGAGEMENT BAIT STATUS =====
                 learning_system.record_tweet_posted(
                     tweet_id=tweet_id,
                     tweet_text=full_tweet,
@@ -1717,11 +1575,14 @@ def post_main_content_with_learning(category):
                     time_slot=current_time,
                     hashtags=hashtags,
                     has_emoji=has_emoji,
-                    has_cta=has_cta
+                    has_cta=has_cta,
+                    is_engagement_bait=use_engagement_bait
                 )
+                # ===== END RECORDING =====
                 
                 timing_type = "premium" if is_premium_posting_time() else "global" if is_global_posting_time() else "standard"
-                write_log(f"✅ Posted {timing_type} content (learning-optimized): {article['title'][:50]}...")
+                bait_marker = "🔥 BAIT" if use_engagement_bait else ""
+                write_log(f"✅ Posted {timing_type} content {bait_marker}: {article['title'][:50]}...")
                 return True
                 
             except Exception as e:
@@ -1755,10 +1616,10 @@ def should_post_main_content():
 
 def should_run_reply_campaign():
     """Check if it's time for reply campaign"""
-    return False  # Disabled due to API permission issues
+    return False
 
 def run_main_content_job_with_learning():
-    """Enhanced main content job with learning"""
+    """Enhanced main content job with learning and diagnostics"""
     try:
         write_log("🚀 Starting strategic main content job with learning...")
         
@@ -1767,6 +1628,15 @@ def run_main_content_job_with_learning():
             learning_system.analyze_performance()
         
         category = detect_category_with_learning()
+        write_log(f"📂 Selected category: {category}")
+        
+        articles = get_articles_for_category(category)
+        write_log(f"📰 Found {len(articles)} articles for {category}")
+        
+        if os.path.exists(POSTED_LOG):
+            with open(POSTED_LOG, 'r') as f:
+                posted_count = len(f.readlines())
+            write_log(f"📝 Already posted: {posted_count} articles total")
         
         success = post_main_content_with_learning(category)
         if not success:
@@ -1781,18 +1651,9 @@ def run_main_content_job_with_learning():
     except Exception as e:
         write_log(f"Error in main content job: {e}")
 
-def run_reply_job():
-    """Execute reply campaign"""
-    try:
-        write_log("Starting reply campaign...")
-        reply_system.execute_reply_campaign()
-        write_log("Reply campaign completed")
-    except Exception as e:
-        write_log(f"Error in reply campaign: {e}")
-
 def start_learning_scheduler():
     """Scheduler with integrated learning system and continuous heartbeat"""
-    write_log("🧠 Starting SELF-LEARNING scheduler...")
+    write_log("🧠 Starting SELF-LEARNING scheduler with ENGAGEMENT BAIT...")
     write_log("="*60)
     write_log("Learning system: ACTIVE - Bot adapts based on performance data")
     write_log(f"Performance analysis: Daily (when {learning_system.min_tweets_for_learning}+ tweets posted)")
@@ -1801,8 +1662,8 @@ def start_learning_scheduler():
     write_log(f"Business categories: {BUSINESS_CATEGORIES}")
     write_log(f"Global categories: {GLOBAL_CATEGORIES}")
     write_log("Visual elements: ACTIVE")
-    write_log("Targeted replies: DISABLED (API limitations)")
-    write_log("Continuous heartbeat: ACTIVE (30-second intervals)")
+    write_log("Engagement bait: ACTIVE (30% of posts)")
+    write_log("Continuous heartbeat: ACTIVE (5-minute intervals)")
     write_log("="*60)
     
     quota_status = quota_manager.get_quota_status()
@@ -1816,7 +1677,7 @@ def start_learning_scheduler():
     
     last_checked_minute = None
     last_heartbeat = datetime.now(pytz.UTC)
-    heartbeat_interval = 300  # 5 minutes
+    heartbeat_interval = 300
     loop_count = 0
     
     while True:
@@ -1825,7 +1686,6 @@ def start_learning_scheduler():
             current_minute = current_time.strftime("%H:%M")
             loop_count += 1
             
-            # Heartbeat logging every 5 minutes to show bot is alive
             if (current_time - last_heartbeat).total_seconds() >= heartbeat_interval:
                 quota_status = quota_manager.get_quota_status()
                 write_log(f"💓 HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | "
@@ -1834,7 +1694,6 @@ def start_learning_scheduler():
                          f"Analyzed: {learning_system.performance_data['total_analyzed']} tweets")
                 last_heartbeat = current_time
             
-            # Check for scheduled actions only when minute changes
             if current_minute != last_checked_minute:
                 write_log(f"🕐 Time check: {current_minute} UTC (Loop #{loop_count})")
                 
@@ -1845,11 +1704,9 @@ def start_learning_scheduler():
 
                 if should_run_reply_campaign():
                     write_log(f"⏰ Reply campaign time: {current_minute}")
-                    run_reply_job()
                 
                 last_checked_minute = current_minute
             
-            # Sleep for 30 seconds to keep the process alive
             time.sleep(30)
             
         except KeyboardInterrupt:
@@ -1873,7 +1730,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         quota_status = quota_manager.get_quota_status()
         learning_status = learning_system.performance_data
         
-        status = f"""Self-Learning Twitter Bot Status: RUNNING
+        status = f"""Self-Learning Twitter Bot with ENGAGEMENT BAIT: RUNNING
 
 === MONTHLY QUOTA ===
 Reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)
@@ -1881,8 +1738,9 @@ Writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} re
 
 === DAILY ALLOCATION ===
 Main Posts: 12/day (360/month)
-Replies: 3/day (90/month)
-Emergency Buffer: 50/month
+- Regular Posts: ~8/day (240/month)
+- Engagement Bait: ~4/day (120/month) 🔥
+Emergency Buffer: 140/month
 
 === LEARNING SYSTEM ===
 Status: ACTIVE
@@ -1907,6 +1765,11 @@ Pending Analysis: {len([t for t in learning_status['tweets'] if not t['analyzed'
         if learning_system.insights.get("cta_effectiveness"):
             improvement = learning_system.insights["cta_effectiveness"]["improvement_factor"]
             status += f"\nCTA Impact: {improvement:.2f}x boost"
+        
+        if learning_system.insights.get("engagement_bait_effectiveness"):
+            improvement = learning_system.insights["engagement_bait_effectiveness"]["improvement_factor"]
+            bait_count = learning_system.insights["engagement_bait_effectiveness"]["bait_count"]
+            status += f"\n🔥 Engagement Bait: {improvement:.2f}x boost ({bait_count} tested)"
 
         status += f"""
 
@@ -1915,6 +1778,7 @@ Pending Analysis: {len([t for t in learning_status['tweets'] if not t['analyzed'
 ✓ Performance-Based Optimization
 ✓ Visual Elements with Smart Emojis
 ✓ Contextual CTAs
+✓ 🔥 ENGAGEMENT BAIT (30% of posts)
 ✓ Dynamic Example Openers
 ✓ Premium Targeting
 ✓ Strategic Timing
@@ -1961,7 +1825,6 @@ def test_learning_system():
     """Test learning system functionality"""
     write_log("Testing learning system...")
     
-    # Check if data files exist
     if os.path.exists(learning_system.performance_db):
         write_log(f"✓ Performance DB found: {len(learning_system.performance_data['tweets'])} tweets recorded")
     else:
@@ -1972,7 +1835,6 @@ def test_learning_system():
     else:
         write_log("○ Learning insights not found (will be created after first analysis)")
     
-    # Check if we have enough data for learning
     if learning_system.performance_data["total_analyzed"] >= learning_system.min_tweets_for_learning:
         write_log(f"✓ Sufficient data for learning: {learning_system.performance_data['total_analyzed']} tweets analyzed")
         learning_system._log_key_insights()
@@ -1981,16 +1843,29 @@ def test_learning_system():
     
     return True
 
+def test_engagement_bait():
+    """Test engagement bait generation"""
+    write_log("Testing engagement bait system...")
+    
+    test_categories = ["EPL", "F1", "Crypto"]
+    for category in test_categories:
+        if category in ENGAGEMENT_BAIT_PATTERNS:
+            write_log(f"✓ {category}: Engagement bait patterns loaded")
+        else:
+            write_log(f"✗ {category}: Missing engagement bait patterns")
+    
+    write_log(f"✓ Engagement bait probability: 30% ({should_use_engagement_bait.__doc__})")
+    return True
+
 # =========================
 # MAIN EXECUTION
 # =========================
 
 if __name__ == "__main__":
     write_log("="*60)
-    write_log("🧠 SELF-LEARNING TWITTER BOT STARTUP")
+    write_log("🧠 SELF-LEARNING TWITTER BOT WITH ENGAGEMENT BAIT STARTUP")
     write_log("="*60)
     
-    # Validate environment
     try:
         validate_env_vars()
         write_log("✅ Environment variables validated")
@@ -1998,15 +1873,13 @@ if __name__ == "__main__":
         write_log(f"❌ Environment validation failed: {e}")
         exit(1)
     
-    # Test authentication
     if not test_auth():
         write_log("CRITICAL: Authentication failed. Bot cannot run.")
         exit(1)
     
-    # Test learning system
     test_learning_system()
+    test_engagement_bait()
     
-    # Display startup info
     quota_status = quota_manager.get_quota_status()
     write_log("")
     write_log("=== QUOTA STATUS ===")
@@ -2021,18 +1894,28 @@ if __name__ == "__main__":
     write_log("✓ Time slot optimization")
     write_log("✓ Hashtag effectiveness analysis")
     write_log("✓ Emoji and CTA impact measurement")
+    write_log("✓ 🔥 Engagement bait effectiveness tracking")
     write_log("✓ Adaptive content strategy")
     write_log("✓ Best practices identification")
     
     write_log("")
     write_log("=== POSTING STRATEGY ===")
     write_log("✓ Main posts: 12/day with learning optimization")
+    write_log("✓ 🔥 Engagement bait: ~4/day (30% of posts)")
     write_log("✓ Visual elements with smart emojis")
     write_log("✓ Contextual CTAs based on content")
     write_log("✓ Premium targeting for business categories")
     write_log("✓ Global timing for sports/entertainment")
     write_log("✓ Strategic category selection based on performance")
     write_log("✓ Time slot filtering (skip underperforming times)")
+    
+    write_log("")
+    write_log("=== ENGAGEMENT BAIT SYSTEM ===")
+    write_log("🔥 Controversial takes: 'Unpopular opinion:', 'Hot take:', etc.")
+    write_log("🔥 Debate starters: Force people to pick sides")
+    write_log("🔥 Comparisons: 'X vs Y' style posts")
+    write_log("🔥 Expected impact: 2-3x higher engagement")
+    write_log("🔥 Categories covered: EPL, F1, Crypto, Tesla, Space, Cycling, MotoGP")
     
     write_log("")
     write_log("=== LEARNING INSIGHTS ===")
@@ -2059,16 +1942,14 @@ if __name__ == "__main__":
     write_log("• Write usage: 12 posts/day (360/month)")
     write_log("• Buffer: 70 reads + 140 writes reserved")
     
-    # Start health server in background
     write_log("")
     write_log("Starting health check server...")
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     
-    # Start the self-learning scheduler
     write_log("")
     write_log("="*60)
-    write_log("🚀 STARTING SELF-LEARNING SCHEDULER")
+    write_log("🚀 STARTING SELF-LEARNING SCHEDULER WITH ENGAGEMENT BAIT")
     write_log("="*60)
     write_log("")
     
@@ -2080,7 +1961,6 @@ if __name__ == "__main__":
         write_log("🛑 Bot stopped by user")
         write_log("="*60)
         
-        # Save final learning insights
         learning_system.save_performance_data()
         learning_system.save_learning_insights()
         
@@ -2090,13 +1970,7 @@ if __name__ == "__main__":
     except Exception as e:
         write_log(f"❌ Critical error: {e}")
         
-        # Save data before exit
         learning_system.save_performance_data()
         learning_system.save_learning_insights()
         
         exit(1)
-
-
-
-
-
