@@ -727,7 +727,7 @@ def start_scheduler():
                 quota_status = quota_manager.get_quota_status()
                 write_log(f"💓 HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | "
                          f"Writes: {quota_status['writes_used']}/500 | "
-                         f"Reads: {quota_status['reads_used']}/100 | "                         
+                         f"Reads: {quota_status['reads_used']}/100 | ")                         
                 last_heartbeat = current_time
             
             # Check for posting time
@@ -928,4 +928,5 @@ if __name__ == "__main__":
         
         
         exit(1)
+
 
