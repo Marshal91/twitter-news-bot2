@@ -52,10 +52,13 @@ last_post_time = None
 POSTING_TIMES = [
     "01:00",  # Asian morning
     "06:00",  # Asian afternoon
-    "09:00",  # US pre-market
+    "08:00",
+    "09:30",  # US pre-market
+    "11:30",
     "13:00",  # US lunch
-    "14:00",  # US afternoon
+    "14:30",  # US afternoon
     "17:00",  # US evening
+    "19:00",
     "21:00",  # US night / Asian early morning
     "23:00"   # US late night / Asian morning
 ]
@@ -824,6 +827,7 @@ if __name__ == "__main__":
         
         
         exit(1)
+
 
 
 
