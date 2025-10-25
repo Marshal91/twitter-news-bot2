@@ -1,295 +1,3 @@
-"""
-Crypto-Exclusive Bot with High-Engagement Strategies
-Enhanced with crypto-specific engagement tactics
-UPDATED VERSION - All fixes applied
-"""
-
-import os
-import random
-import requests
-import feedparser
-import tweepy
-import time
-import json
-import hashlib
-from datetime import datetime, timedelta
-import pytz
-from newspaper import Article, Config
-from openai import OpenAI
-from dotenv import load_dotenv
-import logging
-from logging.handlers import RotatingFileHandler
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-
-# Load environment variables
-try:
-    if os.path.exists('.env'):
-        load_dotenv()
-        print("INFO: .env file loaded successfully")
-    else:
-        print("INFO: No .env file found, using system environment variables")
-except Exception as e:
-    print(f"INFO: Could not load .env file: {e}")
-
-# =========================
-# CONFIGURATION
-# =========================
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
-
-# FILE PATHS - FIXED
-POSTED_LOG = "posted_urls.txt"
-CONTENT_HASHES_FILE = "content_hashes.txt"
-LOG_FILE = "bot_log.txt"
-
-# POSTING LIMITS
-DAILY_POST_LIMIT = 15
-POST_INTERVAL_MINUTES = 90
-last_post_time = None
-FRESHNESS_WINDOW = timedelta(hours=24)
-
-# Daily counter tracking - ADDED
-daily_posts = 0
-last_reset_date = datetime.now(pytz.UTC).date()
-recent_content_types = []
-MAX_RECENT_TYPES = 5
-
-# CRYPTO-OPTIMIZED POSTING TIMES (US + Asian markets)
-POSTING_TIMES = [
-    "01:00",  # Asian morning
-    "06:00",  # Asian afternoon
-    "08:25",
-    "10:00",  # US pre-market
-    "11:30",
-    "13:00",  # US lunch
-    "14:30",  # US afternoon
-    "17:00",  # US evening
-    "19:00",
-    "21:00",  # US night / Asian early morning
-    "23:00"   # US late night / Asian morning
-]
-
-# CRYPTO CONTENT TYPES (based on engagement strategy)
-CRYPTO_CONTENT_TYPES = [
-    "educational",      # "Here's how X works"
-    "market_analysis",  # "Why BTC is doing X"
-    "contrarian",       # "Everyone's wrong about..."
-    "question",         # "Which do you prefer: X or Y?"
-    "hot_take",         # Bold controversial opinions
-    "breakdown"         # "5 things about..."
-]
-
-# CRYPTO RSS FEEDS
-RSS_FEEDS = [
-    "https://cointelegraph.com/rss",
-    "https://www.coindesk.com/arc/outboundfeeds/rss/",
-    "https://crypto.news/feed/",
-    "https://decrypt.co/feed",
-    "https://bitcoinmagazine.com/.rss/full/"
-]
-
-# CRYPTO HASHTAGS
-CRYPTO_HASHTAGS = {
-    "primary": ["#Crypto", "#Bitcoin", "#Ethereum", "#BTC", "#ETH"],
-    "trending": ["#CryptoNews", "#Blockchain", "#DeFi", "#Web3", "#Altcoins"],
-    "specific": ["#Solana", "#Cardano", "#Polygon", "#BNB", "#XRP"]
-}
-
-# =========================
-# CRYPTO ENGAGEMENT STRATEGIES
-# =========================
-
-CRYPTO_ENGAGEMENT_TEMPLATES = {
-    "question": [
-        "Which would you choose: {option1} or {option2}?",
-        "Quick poll: {option1} vs {option2}?",
-        "Honest question: {option1} or {option2}?",
-        "You can only pick one: {option1} or {option2}. Which is it?",
-        "{question} Drop your answer below 👇"
-    ],
-    
-    "hot_take": [
-        "Unpopular opinion: {statement}",
-        "Hot take: {statement}",
-        "Controversial but true: {statement}",
-        "Nobody wants to hear this but {statement}",
-        "Real talk: {statement}"
-    ],
-    
-    "contrarian": [
-        "Everyone's wrong about {topic}. Here's why:",
-        "The truth about {topic} that nobody talks about:",
-        "Why {mainstream_belief} is actually backwards:",
-        "Unpopular opinion: {topic} is completely misunderstood",
-        "Let's be honest about {topic}:"
-    ],
-    
-    "educational": [
-        "Here's how {concept} actually works:",
-        "Understanding {concept} in simple terms:",
-        "{concept} explained (no BS):",
-        "Quick breakdown: {concept}",
-        "What you need to know about {concept}:"
-    ],
-    
-    "market_analysis": [
-        "Why {coin} is {movement} today:",
-        "What's really driving {coin}'s {movement}:",
-        "The real reason behind {coin}'s {movement}:",
-        "{coin} {movement} - here's what's happening:",
-        "Breaking down {coin}'s {movement}:"
-    ],
-    
-    "breakdown": [
-        "5 things about {topic} you need to know:",
-        "3 reasons why {topic} matters:",
-        "The top {number} signs of {topic}:",
-        "{number} facts about {topic} that will surprise you:",
-        "Here are {number} things everyone gets wrong about {topic}:"
-    ]
-}
-
-CRYPTO_QUESTION_TEMPLATES = [
-    "Bitcoin or Ethereum for the next 5 years?",
-    "DeFi or CeFi - which is the future?",
-    "Would you rather: 10 BTC in 2010 or $10M cash today?",
-    "Bull market or bear market - which teaches you more?",
-    "Holding or trading - which makes you more money?",
-    "Layer 1 or Layer 2 - where's the real opportunity?",
-    "Staking or lending - which is better for passive income?",
-    "Privacy coins: necessary innovation or regulatory nightmare?"
-]
-
-CRYPTO_HOT_TAKES = [
-    "Most crypto 'investors' are just gamblers with better vocabulary",
-    "The next bull run will look nothing like the last one",
-    "NFTs solved a real problem, people just hate the art",
-    "Regulation will make crypto bigger, not smaller",
-    "99% of altcoins will go to zero",
-    "The real crypto wealth is made in bear markets",
-    "Technical analysis in crypto is modern astrology"
-]
-
-CRYPTO_EMOJIS = ["₿", "💎", "🚀", "📊", "📈", "📉", "⚡", "🔥", "💰", "🎯"]
-
-# Initialize OpenAI and Twitter clients
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
-
-auth = tweepy.OAuth1UserHandler(
-    TWITTER_API_KEY, TWITTER_API_SECRET,
-    TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
-)
-twitter_api = tweepy.API(auth)
-twitter_client = tweepy.Client(
-    consumer_key=TWITTER_API_KEY,
-    consumer_secret=TWITTER_API_SECRET,
-    access_token=TWITTER_ACCESS_TOKEN,
-    access_token_secret=TWITTER_ACCESS_SECRET
-)
-
-# =========================
-# LOGGING
-# =========================
-
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s: %(message)s",
-    handlers=[
-        RotatingFileHandler('logs/bot_activity.log', maxBytes=10*1024*1024, backupCount=5),
-        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),
-        logging.StreamHandler()
-    ]
-)
-
-def write_log(message, level="info"):
-    """Enhanced logging to both console and persistent file"""
-    if level == "error":
-        logging.error(message)
-    else:
-        logging.info(message)
-
-# =========================
-# HELPER FUNCTIONS - ADDED
-# =========================
-
-def reset_daily_counter():
-    """Reset daily post counter at midnight UTC"""
-    global daily_posts, last_reset_date
-    current_date = datetime.now(pytz.UTC).date()
-    if current_date > last_reset_date:
-        daily_posts = 0
-        last_reset_date = current_date
-        write_log("📊 Daily post counter reset to 0")
-
-def get_content_hash(text):
-    """Generate hash of tweet content for duplicate detection"""
-    return hashlib.md5(text.lower().encode()).hexdigest()
-
-def is_similar_content(tweet_text):
-    """Check if similar content was posted recently"""
-    content_hash = get_content_hash(tweet_text)
-    
-    if not os.path.exists(CONTENT_HASHES_FILE):
-        return False
-    
-    try:
-        with open(CONTENT_HASHES_FILE, 'r') as f:
-            recent_hashes = f.read().splitlines()[-100:]  # Keep last 100
-        return content_hash in recent_hashes
-    except Exception as e:
-        write_log(f"Error checking content hash: {e}")
-        return False
-
-def log_content_hash(tweet_text):
-    """Store content hash to prevent duplicates"""
-    content_hash = get_content_hash(tweet_text)
-    try:
-        with open(CONTENT_HASHES_FILE, 'a') as f:
-            f.write(f"{content_hash}\n")
-    except Exception as e:
-        write_log(f"Error logging content hash: {e}")
-
-def get_varied_content_type():
-    """Ensure content variety by avoiding recent types"""
-    global recent_content_types
-    
-    # Avoid repeating same type consecutively
-    available_types = [t for t in CRYPTO_CONTENT_TYPES 
-                      if t not in recent_content_types[-2:]]
-    
-    if not available_types:
-        available_types = CRYPTO_CONTENT_TYPES
-    
-    selected = random.choice(available_types)
-    recent_content_types.append(selected)
-    
-    if len(recent_content_types) > MAX_RECENT_TYPES:
-        recent_content_types.pop(0)
-    
-    return selected
-
-# =========================
-# CRYPTO CONTENT GENERATION
-# =========================
-
-def generate_crypto_question(title):
-    """Generate engaging question-based content"""
-    prompt = f"""Based on this crypto news: "{title}"
-
-Create a simple, engaging question that makes people want# Complete Updated Crypto Twitter Bot Script
-
-I'll provide the fully corrected script with all fixes applied, plus address the log issue you mentioned.
-
-```python
-"""
 Crypto-Exclusive Bot with High-Engagement Strategies
 Enhanced with crypto-specific engagement tactics
 UPDATED VERSION - All fixes applied
@@ -356,8 +64,8 @@ MAX_RECENT_TYPES = 5
 POSTING_TIMES = [
     "01:00",  # Asian morning
     "06:00",  # Asian afternoon
-    "08:10",
-    "09:50",  # US pre-market
+    "08:30",
+    "10:00",  # US pre-market
     "11:30",
     "13:00",  # US lunch
     "14:30",  # US afternoon
@@ -1011,7 +719,7 @@ def should_post_now():
     return current_time in POSTING_TIMES
 
 def get_next_posting_time():
-    """Calculate next optimal posting time - NEW"""
+    """Calculate next optimal posting time"""
     current_time = datetime.now(pytz.UTC)
     current_str = current_time.strftime("%H:%M")
     
@@ -1085,7 +793,6 @@ def start_scheduler():
             write_log(f"❌ ERROR in scheduler loop: {e}", level="error")
             write_log("Continuing after 60 second cooldown...")
             time.sleep(60)
-
 # =========================
 # HEALTH SERVER
 # =========================
@@ -1273,3 +980,4 @@ if __name__ == "__main__":
     except Exception as e:
         write_log(f"❌ CRITICAL ERROR: {e}", level="error")
         exit(1)
+
