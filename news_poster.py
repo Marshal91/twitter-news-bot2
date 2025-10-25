@@ -1,6 +1,5 @@
 """
-Crypto-Exclusive Self-Learning Twitter Bot with High-Engagement Strategies
-API Limits: 100 reads/month (3/day), 500 writes/month (15 posts/day)
+Crypto-Exclusive Bot with High-Engagement Strategies
 Enhanced with crypto-specific engagement tactics
 """
 
@@ -47,13 +46,14 @@ LOG_FILE = "bot_log.txt"
 DAILY_POST_LIMIT = 15
 POST_INTERVAL_MINUTES = 90
 last_post_time = None
+FRESHNESS_WINDOW = timedelta(hours=24)
 
 # CRYPTO-OPTIMIZED POSTING TIMES (US + Asian markets)
 POSTING_TIMES = [
     "01:00",  # Asian morning
     "06:00",  # Asian afternoon
-    "08:00",
-    "09:30",  # US pre-market
+    "08:10",
+    "09:50",  # US pre-market
     "11:30",
     "13:00",  # US lunch
     "14:30",  # US afternoon
@@ -491,17 +491,14 @@ def shorten_url(long_url):
     return long_url
 
 def post_crypto_content():
-    """Main posting function with learning integration"""
+    """Main posting function """
     global last_post_time
     
     if not can_post_now():
         write_log("Cannot post - rate limited")
         return False
     
-    # Get recommended content type from learning
-    content_type = learning_system.get_recommended_content_type()
-    write_log(f"🎯 Selected content type: {content_type}")
-    
+   
     articles = get_crypto_articles()
     
     for article in articles:
@@ -550,20 +547,7 @@ def post_crypto_content():
                 log_posted(article["url"])
                 last_post_time = datetime.now(pytz.UTC)
                 
-                # Record for learning
-                current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-                learning_system.record_tweet_posted(
-                    tweet_id=tweet_id,
-                    tweet_text=full_tweet,
-                    content_type=content_type,
-                    time_slot=current_time,
-                    hashtags=hashtags,
-                    engagement_style=engagement_style
-                )
-                
-                write_log(f"✅ Posted {content_type} ({engagement_style}): {article['title'][:50]}...")
-                return True
-                
+               
             except Exception as e:
                 error_msg = str(e)
                 
@@ -594,7 +578,7 @@ def should_post_now():
     return current_time in POSTING_TIMES
 
 def run_posting_job():
-    """Main posting job with learning"""
+    """Main posting job """
     try:
         write_log("🚀 Starting crypto posting job...")
         
@@ -612,7 +596,6 @@ def start_scheduler():
     write_log("🚀 Starting CRYPTO-FOCUSED scheduler...")
     write_log("="*60)
     write_log("Niche: CRYPTO ONLY")
-    write_log("Learning system: ACTIVE")
     write_log(f"Posting times (UTC): {POSTING_TIMES}")
     write_log(f"Content types: {CRYPTO_CONTENT_TYPES}")
     write_log("Engagement strategy: Questions, Hot Takes, Contrarian Views")
@@ -681,7 +664,6 @@ Emergency Buffer: 50/month
 === CRYPTO FEATURES ===
 ✓ Multi-format content (questions, hot takes, analysis)
 ✓ Engagement-optimized posting times (US + Asia)
-✓ Self-learning content optimization
 ✓ Smart hashtag optimization
 ✓ Crypto-specific emojis
 
@@ -827,6 +809,7 @@ if __name__ == "__main__":
         
         
         exit(1)
+
 
 
 
