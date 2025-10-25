@@ -32,19 +32,6 @@ except Exception as e:
     print(f"INFO: Could not load .env file: {e}")
 
 # =========================
-# PERSISTENT STORAGE CONFIGURATION
-# =========================
-
-STORAGE_PATH = os.getenv("PERSISTENT_STORAGE_PATH", ".")
-
-try:
-    os.makedirs(STORAGE_PATH, exist_ok=True)
-    print(f"INFO: Using persistent storage path: {STORAGE_PATH}")
-except Exception as e:
-    print(f"WARNING: Could not create storage directory: {e}")
-    STORAGE_PATH = "."
-
-# =========================
 # API QUOTA MANAGEMENT
 # =========================
 
@@ -141,7 +128,6 @@ TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
 quota_manager = APIQuotaManager()
-learning_system = PerformanceLearningSystem()
 
 LOG_FILE = "bot_log.txt"
 POSTED_LOG = os.path.join(STORAGE_PATH, "posted_links.txt")
@@ -697,11 +683,7 @@ def run_posting_job():
     try:
         write_log("🚀 Starting crypto posting job...")
         
-        # Run performance analysis if needed
-        if learning_system.should_analyze_performance():
-            write_log("🧠 Running performance analysis...")
-            learning_system.analyze_performance()
-        
+       
         # Post content
         success = post_crypto_content()
         
@@ -728,12 +710,7 @@ def start_scheduler():
     quota_status = quota_manager.get_quota_status()
     write_log(f"Monthly quota: {quota_status}")
     
-    if learning_system.performance_data["total_analyzed"] > 0:
-        write_log(f"🎓 Learning status: {learning_system.performance_data['total_analyzed']} tweets analyzed")
-        learning_system._log_key_insights()
-    else:
-        write_log("🎓 Learning status: Gathering initial data...")
-    
+  
     last_checked_minute = None
     last_heartbeat = datetime.now(pytz.UTC)
     heartbeat_interval = 300  # 5 minutes
@@ -750,8 +727,7 @@ def start_scheduler():
                 quota_status = quota_manager.get_quota_status()
                 write_log(f"💓 HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | "
                          f"Writes: {quota_status['writes_used']}/500 | "
-                         f"Reads: {quota_status['reads_used']}/100 | "
-                         f"Analyzed: {learning_system.performance_data['total_analyzed']} tweets")
+                         f"Reads: {quota_status['reads_used']}/100 | "                         
                 last_heartbeat = current_time
             
             # Check for posting time
@@ -785,8 +761,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         
         quota_status = quota_manager.get_quota_status()
-        learning_status = learning_system.performance_data
-        
+         
         status = f"""Crypto-Focused Twitter Bot: RUNNING
 
 === MONTHLY QUOTA ===
@@ -797,39 +772,12 @@ Writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} re
 Posts: ~15/day (450/month)
 Emergency Buffer: 50/month
 
-=== LEARNING SYSTEM ===
-Status: ACTIVE
-Tweets Analyzed: {learning_status['total_analyzed']}
-Last Analysis: {learning_status['last_analysis'] or 'Never'}
-Pending Analysis: {len([t for t in learning_status['tweets'] if not t['analyzed']])} tweets
 
-=== LEARNING INSIGHTS ==="""
-
-        if learning_system.insights.get("content_type_performance"):
-            sorted_types = sorted(
-                learning_system.insights["content_type_performance"].items(),
-                key=lambda x: x[1]["avg_engagement"],
-                reverse=True
-            )
-            if sorted_types:
-                status += f"\nTop Content Type: {sorted_types[0][0]} (avg: {sorted_types[0][1]['avg_engagement']:.2f})"
-        
-        if learning_system.insights.get("engagement_style_scores"):
-            sorted_styles = sorted(
-                learning_system.insights["engagement_style_scores"].items(),
-                key=lambda x: x[1]["avg_engagement"],
-                reverse=True
-            )
-            if sorted_styles:
-                status += f"\nTop Engagement Style: {sorted_styles[0][0]} (avg: {sorted_styles[0][1]['avg_engagement']:.2f})"
-
-        status += f"""
 
 === CRYPTO FEATURES ===
 ✓ Multi-format content (questions, hot takes, analysis)
 ✓ Engagement-optimized posting times (US + Asia)
 ✓ Self-learning content optimization
-✓ Performance tracking & adaptation
 ✓ Smart hashtag optimization
 ✓ Crypto-specific emojis
 
@@ -978,16 +926,6 @@ if __name__ == "__main__":
         write_log("🛑 Bot stopped by user")
         write_log("="*60)
         
-        learning_system.save_performance_data()
-        learning_system.save_learning_insights()
-        
-        write_log("✅ Learning data saved successfully")
-        write_log(f"📊 Total tweets recorded: {len(learning_system.performance_data['tweets'])}")
-        write_log(f"📈 Total tweets analyzed: {learning_system.performance_data['total_analyzed']}")
-    except Exception as e:
-        write_log(f"❌ Critical error: {e}")
-        
-        learning_system.save_performance_data()
-        learning_system.save_learning_insights()
         
         exit(1)
+
