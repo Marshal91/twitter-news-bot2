@@ -43,7 +43,6 @@ TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
 
 LOG_FILE = "bot_log.txt"
-POSTED_LOG = os.path.join(STORAGE_PATH, "posted_links.txt")
 
 DAILY_POST_LIMIT = 15
 POST_INTERVAL_MINUTES = 90
@@ -825,6 +824,7 @@ if __name__ == "__main__":
         
         
         exit(1)
+
 
 
 
