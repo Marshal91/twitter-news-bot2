@@ -32,92 +32,6 @@ except Exception as e:
     print(f"INFO: Could not load .env file: {e}")
 
 # =========================
-# API QUOTA MANAGEMENT
-# =========================
-
-class APIQuotaManager:
-    def __init__(self):
-        self.quota_file = os.path.join(STORAGE_PATH, "api_quota.json")
-        self.load_quota()
-    
-    def load_quota(self):
-        """Load current month's quota usage"""
-        try:
-            if os.path.exists(self.quota_file):
-                with open(self.quota_file, 'r') as f:
-                    data = json.load(f)
-                
-                current_month = datetime.now(pytz.UTC).strftime("%Y-%m")
-                if data.get("month") != current_month:
-                    self.quota = {
-                        "month": current_month,
-                        "reads_used": 0,
-                        "writes_used": 0,
-                        "last_reset": datetime.now(pytz.UTC).isoformat()
-                    }
-                    self.save_quota()
-                else:
-                    self.quota = data
-            else:
-                self.quota = {
-                    "month": datetime.now(pytz.UTC).strftime("%Y-%m"),
-                    "reads_used": 0,
-                    "writes_used": 0,
-                    "last_reset": datetime.now(pytz.UTC).isoformat()
-                }
-                self.save_quota()
-        except Exception as e:
-            logging.error(f"Error loading quota: {e}")
-            self.quota = {
-                "month": datetime.now(pytz.UTC).strftime("%Y-%m"),
-                "reads_used": 0,
-                "writes_used": 0,
-                "last_reset": datetime.now(pytz.UTC).isoformat()
-            }
-    
-    def save_quota(self):
-        """Save quota to file"""
-        try:
-            with open(self.quota_file, 'w') as f:
-                json.dump(self.quota, f, indent=2)
-        except Exception as e:
-            logging.error(f"Error saving quota: {e}")
-    
-    def can_read(self, count=1):
-        """Check if we can make read requests"""
-        return (self.quota["reads_used"] + count) <= 100
-    
-    def can_write(self, count=1):
-        """Check if we can make write requests"""
-        return (self.quota["writes_used"] + count) <= 500
-    
-    def use_read(self, count=1):
-        """Record read API usage"""
-        if self.can_read(count):
-            self.quota["reads_used"] += count
-            self.save_quota()
-            return True
-        return False
-    
-    def use_write(self, count=1):
-        """Record write API usage"""
-        if self.can_write(count):
-            self.quota["writes_used"] += count
-            self.save_quota()
-            return True
-        return False
-    
-    def get_quota_status(self):
-        """Get current quota status"""
-        return {
-            "reads_remaining": 100 - self.quota["reads_used"],
-            "writes_remaining": 500 - self.quota["writes_used"],
-            "reads_used": self.quota["reads_used"],
-            "writes_used": self.quota["writes_used"],
-            "month": self.quota["month"]
-        }
-
-# =========================
 # CONFIGURATION
 # =========================
 
@@ -127,7 +41,6 @@ TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
-quota_manager = APIQuotaManager()
 
 LOG_FILE = "bot_log.txt"
 POSTED_LOG = os.path.join(STORAGE_PATH, "posted_links.txt")
@@ -579,8 +492,8 @@ def post_crypto_content():
     """Main posting function with learning integration"""
     global last_post_time
     
-    if not can_post_now() or not quota_manager.can_write(1):
-        write_log("Cannot post - rate limited or quota exhausted")
+    if not can_post_now():
+        write_log("Cannot post - rate limited")
         return False
     
     # Get recommended content type from learning
@@ -631,7 +544,7 @@ def post_crypto_content():
                 response = twitter_client.create_tweet(text=full_tweet)
                 tweet_id = response.data['id']
                 
-                quota_manager.use_write(1)
+             
                 log_posted(article["url"])
                 last_post_time = datetime.now(pytz.UTC)
                 
@@ -687,11 +600,7 @@ def run_posting_job():
         # Post content
         success = post_crypto_content()
         
-        if not success and quota_manager.can_write(1):
-            write_log("Retrying with different content type...")
-            time.sleep(5)
-            post_crypto_content()
-        
+       
         write_log("✅ Crypto posting job completed")
     except Exception as e:
         write_log(f"Error in posting job: {e}")
@@ -707,8 +616,6 @@ def start_scheduler():
     write_log("Engagement strategy: Questions, Hot Takes, Contrarian Views")
     write_log("="*60)
     
-    quota_status = quota_manager.get_quota_status()
-    write_log(f"Monthly quota: {quota_status}")
     
   
     last_checked_minute = None
@@ -724,10 +631,9 @@ def start_scheduler():
             
             # Heartbeat
             if (current_time - last_heartbeat).total_seconds() >= heartbeat_interval:
-                quota_status = quota_manager.get_quota_status()
-                write_log(f"💓 HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | "
-                         f"Writes: {quota_status['writes_used']}/500 | "
-                         f"Reads: {quota_status['reads_used']}/100 | ")                         
+        
+                write_log(f"💓 HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | ")
+                       
                 last_heartbeat = current_time
             
             # Check for posting time
@@ -760,13 +666,9 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         
-        quota_status = quota_manager.get_quota_status()
-         
+             
         status = f"""Crypto-Focused Twitter Bot: RUNNING
 
-=== MONTHLY QUOTA ===
-Reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)
-Writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)
 
 === DAILY ALLOCATION ===
 Posts: ~15/day (450/month)
@@ -877,12 +779,7 @@ if __name__ == "__main__":
     
     test_content_generation()
     
-    quota_status = quota_manager.get_quota_status()
-    write_log("")
-    write_log("=== QUOTA STATUS ===")
-    write_log(f"Monthly reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)")
-    write_log(f"Monthly writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)")
-    
+        
     write_log("")
     write_log("=== CRYPTO SPECIALIZATION ===")
     write_log("✓ 100% crypto-focused content")
@@ -928,5 +825,6 @@ if __name__ == "__main__":
         
         
         exit(1)
+
 
 
