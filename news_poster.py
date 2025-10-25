@@ -1,8 +1,7 @@
 """
-Complete Self-Learning Twitter Bot with Performance Analytics & Engagement Bait
-API Limits: 100 reads/month (3/day), 500 writes/month (12 posts + 3 replies/day)
-Enhanced with machine learning capabilities that adapt based on performance
-NOW WITH: 30% Engagement Bait posts for 2-3x higher engagement
+Crypto-Exclusive Self-Learning Twitter Bot with High-Engagement Strategies
+API Limits: 100 reads/month (3/day), 500 writes/month (15 posts/day)
+Enhanced with crypto-specific engagement tactics
 """
 
 import os
@@ -11,20 +10,18 @@ import requests
 import feedparser
 import tweepy
 import time
-import hashlib
 import json
 from datetime import datetime, timedelta
 import pytz
 from newspaper import Article, Config
 from openai import OpenAI
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
 import logging
 from logging.handlers import RotatingFileHandler
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
-# Try to load .env file if it exists
+# Load environment variables
 try:
     if os.path.exists('.env'):
         load_dotenv()
@@ -134,462 +131,6 @@ class APIQuotaManager:
         }
 
 # =========================
-# SELF-LEARNING PERFORMANCE ANALYTICS
-# =========================
-
-class PerformanceLearningSystem:
-    """
-    Analyzes tweet performance and adapts strategies based on what works.
-    Uses read quota efficiently: 1 read per analysis session (daily).
-    NOW TRACKS: Engagement bait effectiveness
-    """
-    
-    def __init__(self):
-        self.performance_db = os.path.join(STORAGE_PATH, "tweet_performance.json")
-        self.learning_insights = os.path.join(STORAGE_PATH, "learning_insights.json")
-        self.min_tweets_for_learning = 10
-        self.load_performance_data()
-        self.load_learning_insights()
-    
-    def load_performance_data(self):
-        """Load historical tweet performance data"""
-        try:
-            if os.path.exists(self.performance_db):
-                with open(self.performance_db, 'r') as f:
-                    self.performance_data = json.load(f)
-            else:
-                self.performance_data = {
-                    "tweets": [],
-                    "last_analysis": None,
-                    "total_analyzed": 0
-                }
-        except Exception as e:
-            logging.error(f"Error loading performance data: {e}")
-            self.performance_data = {
-                "tweets": [],
-                "last_analysis": None,
-                "total_analyzed": 0
-            }
-    
-    def load_learning_insights(self):
-        """Load learned insights about what works"""
-        try:
-            if os.path.exists(self.learning_insights):
-                with open(self.learning_insights, 'r') as f:
-                    self.insights = json.load(f)
-            else:
-                self.insights = {
-                    "category_performance": {},
-                    "time_slot_performance": {},
-                    "hashtag_effectiveness": {},
-                    "content_style_scores": {},
-                    "emoji_impact": {},
-                    "cta_effectiveness": {},
-                    "engagement_bait_effectiveness": {},
-                    "best_practices": [],
-                    "avoid_patterns": []
-                }
-        except Exception as e:
-            logging.error(f"Error loading insights: {e}")
-            self.insights = {
-                "category_performance": {},
-                "time_slot_performance": {},
-                "hashtag_effectiveness": {},
-                "content_style_scores": {},
-                "emoji_impact": {},
-                "cta_effectiveness": {},
-                "engagement_bait_effectiveness": {},
-                "best_practices": [],
-                "avoid_patterns": []
-            }
-    
-    def save_performance_data(self):
-        """Save performance data to file"""
-        try:
-            with open(self.performance_db, 'w') as f:
-                json.dump(self.performance_data, f, indent=2)
-        except Exception as e:
-            logging.error(f"Error saving performance data: {e}")
-    
-    def save_learning_insights(self):
-        """Save learning insights to file"""
-        try:
-            with open(self.learning_insights, 'w') as f:
-                json.dump(self.insights, f, indent=2)
-        except Exception as e:
-            logging.error(f"Error saving insights: {e}")
-    
-    def record_tweet_posted(self, tweet_id, tweet_text, category, time_slot, hashtags, has_emoji, has_cta, is_engagement_bait=False):
-        """Record when a tweet is posted for later analysis"""
-        tweet_record = {
-            "id": str(tweet_id),
-            "text": tweet_text,
-            "category": category,
-            "time_slot": time_slot,
-            "hashtags": hashtags,
-            "has_emoji": has_emoji,
-            "has_cta": has_cta,
-            "is_engagement_bait": is_engagement_bait,
-            "posted_at": datetime.now(pytz.UTC).isoformat(),
-            "analyzed": False,
-            "metrics": None
-        }
-        
-        self.performance_data["tweets"].append(tweet_record)
-        self.save_performance_data()
-        bait_status = "🔥 ENGAGEMENT BAIT" if is_engagement_bait else "📊 Standard"
-        write_log(f"{bait_status} - Recorded tweet {tweet_id} for learning analysis")
-    
-    def should_analyze_performance(self):
-        """Check if it's time to analyze performance (once daily)"""
-        if not self.performance_data["last_analysis"]:
-            return len(self.performance_data["tweets"]) >= self.min_tweets_for_learning
-        
-        last_analysis = datetime.fromisoformat(self.performance_data["last_analysis"])
-        time_since_analysis = datetime.now(pytz.UTC) - last_analysis
-        
-        unanalyzed = [t for t in self.performance_data["tweets"] if not t["analyzed"]]
-        return time_since_analysis.total_seconds() >= 86400 and len(unanalyzed) > 0
-    
-    def fetch_tweet_metrics(self, tweet_ids):
-        """Fetch engagement metrics for tweets using read quota"""
-        if not quota_manager.can_read(1):
-            write_log("Cannot fetch metrics - read quota exhausted")
-            return {}
-        
-        try:
-            tweets = twitter_client.get_tweets(
-                ids=tweet_ids[:100],
-                tweet_fields=['public_metrics', 'created_at']
-            )
-            
-            quota_manager.use_read(1)
-            
-            metrics_dict = {}
-            if tweets.data:
-                for tweet in tweets.data:
-                    metrics = tweet.public_metrics
-                    engagement_score = (
-                        metrics['like_count'] * 1.0 +
-                        metrics['retweet_count'] * 2.0 +
-                        metrics['reply_count'] * 3.0 +
-                        metrics['quote_count'] * 2.5
-                    )
-                    
-                    metrics_dict[str(tweet.id)] = {
-                        "likes": metrics['like_count'],
-                        "retweets": metrics['retweet_count'],
-                        "replies": metrics['reply_count'],
-                        "quotes": metrics['quote_count'],
-                        "engagement_score": engagement_score
-                    }
-            
-            return metrics_dict
-            
-        except Exception as e:
-            write_log(f"Error fetching tweet metrics: {e}")
-            return {}
-    
-    def analyze_performance(self):
-        """Analyze tweet performance and update learning insights"""
-        write_log("🧠 Starting performance analysis...")
-        
-        cutoff_time = datetime.now(pytz.UTC) - timedelta(hours=24)
-        unanalyzed = [
-            t for t in self.performance_data["tweets"]
-            if not t["analyzed"] and datetime.fromisoformat(t["posted_at"]) < cutoff_time
-        ]
-        
-        if not unanalyzed:
-            write_log("No tweets ready for analysis")
-            return
-        
-        tweet_ids = [t["id"] for t in unanalyzed]
-        metrics = self.fetch_tweet_metrics(tweet_ids)
-        
-        if not metrics:
-            write_log("Could not fetch metrics")
-            return
-        
-        for tweet in unanalyzed:
-            if tweet["id"] in metrics:
-                tweet["metrics"] = metrics[tweet["id"]]
-                tweet["analyzed"] = True
-        
-        self._analyze_category_performance()
-        self._analyze_time_slot_performance()
-        self._analyze_hashtag_effectiveness()
-        self._analyze_emoji_impact()
-        self._analyze_cta_effectiveness()
-        self._analyze_engagement_bait_effectiveness()
-        self._identify_best_practices()
-        
-        self.performance_data["last_analysis"] = datetime.now(pytz.UTC).isoformat()
-        self.performance_data["total_analyzed"] += len([t for t in unanalyzed if t["analyzed"]])
-        
-        self.save_performance_data()
-        self.save_learning_insights()
-        
-        write_log(f"✅ Performance analysis complete. Analyzed {len(metrics)} tweets.")
-        self._log_key_insights()
-    
-    def _analyze_category_performance(self):
-        """Analyze which categories perform best"""
-        category_stats = {}
-        
-        for tweet in self.performance_data["tweets"]:
-            if tweet["analyzed"] and tweet["metrics"]:
-                category = tweet["category"]
-                if category not in category_stats:
-                    category_stats[category] = {
-                        "total_engagement": 0,
-                        "count": 0,
-                        "avg_engagement": 0
-                    }
-                
-                category_stats[category]["total_engagement"] += tweet["metrics"]["engagement_score"]
-                category_stats[category]["count"] += 1
-        
-        for category, stats in category_stats.items():
-            stats["avg_engagement"] = stats["total_engagement"] / stats["count"]
-        
-        self.insights["category_performance"] = category_stats
-    
-    def _analyze_time_slot_performance(self):
-        """Analyze which time slots perform best"""
-        time_stats = {}
-        
-        for tweet in self.performance_data["tweets"]:
-            if tweet["analyzed"] and tweet["metrics"]:
-                time_slot = tweet["time_slot"]
-                if time_slot not in time_stats:
-                    time_stats[time_slot] = {
-                        "total_engagement": 0,
-                        "count": 0,
-                        "avg_engagement": 0
-                    }
-                
-                time_stats[time_slot]["total_engagement"] += tweet["metrics"]["engagement_score"]
-                time_stats[time_slot]["count"] += 1
-        
-        for time_slot, stats in time_stats.items():
-            stats["avg_engagement"] = stats["total_engagement"] / stats["count"]
-        
-        self.insights["time_slot_performance"] = time_stats
-    
-    def _analyze_hashtag_effectiveness(self):
-        """Analyze hashtag performance"""
-        hashtag_stats = {}
-        
-        for tweet in self.performance_data["tweets"]:
-            if tweet["analyzed"] and tweet["metrics"]:
-                for hashtag in tweet["hashtags"]:
-                    if hashtag not in hashtag_stats:
-                        hashtag_stats[hashtag] = {
-                            "total_engagement": 0,
-                            "count": 0,
-                            "avg_engagement": 0
-                        }
-                    
-                    hashtag_stats[hashtag]["total_engagement"] += tweet["metrics"]["engagement_score"]
-                    hashtag_stats[hashtag]["count"] += 1
-        
-        for hashtag, stats in hashtag_stats.items():
-            if stats["count"] >= 3:
-                stats["avg_engagement"] = stats["total_engagement"] / stats["count"]
-        
-        self.insights["hashtag_effectiveness"] = hashtag_stats
-    
-    def _analyze_emoji_impact(self):
-        """Analyze impact of emoji usage"""
-        emoji_stats = {"with_emoji": [], "without_emoji": []}
-        
-        for tweet in self.performance_data["tweets"]:
-            if tweet["analyzed"] and tweet["metrics"]:
-                key = "with_emoji" if tweet["has_emoji"] else "without_emoji"
-                emoji_stats[key].append(tweet["metrics"]["engagement_score"])
-        
-        if emoji_stats["with_emoji"] and emoji_stats["without_emoji"]:
-            self.insights["emoji_impact"] = {
-                "with_emoji_avg": sum(emoji_stats["with_emoji"]) / len(emoji_stats["with_emoji"]),
-                "without_emoji_avg": sum(emoji_stats["without_emoji"]) / len(emoji_stats["without_emoji"]),
-                "improvement_factor": (sum(emoji_stats["with_emoji"]) / len(emoji_stats["with_emoji"])) / 
-                                    (sum(emoji_stats["without_emoji"]) / len(emoji_stats["without_emoji"]))
-            }
-    
-    def _analyze_cta_effectiveness(self):
-        """Analyze effectiveness of CTAs"""
-        cta_stats = {"with_cta": [], "without_cta": []}
-        
-        for tweet in self.performance_data["tweets"]:
-            if tweet["analyzed"] and tweet["metrics"]:
-                key = "with_cta" if tweet["has_cta"] else "without_cta"
-                cta_stats[key].append(tweet["metrics"]["engagement_score"])
-        
-        if cta_stats["with_cta"] and cta_stats["without_cta"]:
-            self.insights["cta_effectiveness"] = {
-                "with_cta_avg": sum(cta_stats["with_cta"]) / len(cta_stats["with_cta"]),
-                "without_cta_avg": sum(cta_stats["without_cta"]) / len(cta_stats["without_cta"]),
-                "improvement_factor": (sum(cta_stats["with_cta"]) / len(cta_stats["with_cta"])) / 
-                                    (sum(cta_stats["without_cta"]) / len(cta_stats["without_cta"]))
-            }
-    
-    def _analyze_engagement_bait_effectiveness(self):
-        """Analyze effectiveness of engagement bait posts"""
-        bait_stats = {"engagement_bait": [], "regular": []}
-        
-        for tweet in self.performance_data["tweets"]:
-            if tweet["analyzed"] and tweet["metrics"]:
-                key = "engagement_bait" if tweet.get("is_engagement_bait", False) else "regular"
-                bait_stats[key].append(tweet["metrics"]["engagement_score"])
-        
-        if bait_stats["engagement_bait"] and bait_stats["regular"]:
-            self.insights["engagement_bait_effectiveness"] = {
-                "engagement_bait_avg": sum(bait_stats["engagement_bait"]) / len(bait_stats["engagement_bait"]),
-                "regular_avg": sum(bait_stats["regular"]) / len(bait_stats["regular"]),
-                "improvement_factor": (sum(bait_stats["engagement_bait"]) / len(bait_stats["engagement_bait"])) / 
-                                    (sum(bait_stats["regular"]) / len(bait_stats["regular"])),
-                "bait_count": len(bait_stats["engagement_bait"]),
-                "regular_count": len(bait_stats["regular"])
-            }
-    
-    def _identify_best_practices(self):
-        """Identify best practices from top-performing tweets"""
-        analyzed_tweets = [t for t in self.performance_data["tweets"] if t["analyzed"] and t["metrics"]]
-        
-        if len(analyzed_tweets) < 10:
-            return
-        
-        sorted_tweets = sorted(analyzed_tweets, key=lambda x: x["metrics"]["engagement_score"], reverse=True)
-        top_10_percent = sorted_tweets[:max(len(sorted_tweets) // 10, 5)]
-        bottom_10_percent = sorted_tweets[-max(len(sorted_tweets) // 10, 5):]
-        
-        best_practices = []
-        
-        top_categories = {}
-        for tweet in top_10_percent:
-            category = tweet["category"]
-            top_categories[category] = top_categories.get(category, 0) + 1
-        
-        if top_categories:
-            best_category = max(top_categories, key=top_categories.get)
-            best_practices.append(f"Category '{best_category}' performs best")
-        
-        top_time_slots = {}
-        for tweet in top_10_percent:
-            time_slot = tweet["time_slot"]
-            top_time_slots[time_slot] = top_time_slots.get(time_slot, 0) + 1
-        
-        if top_time_slots:
-            best_time = max(top_time_slots, key=top_time_slots.get)
-            best_practices.append(f"Time slot '{best_time}' shows strong performance")
-        
-        emoji_in_top = sum(1 for t in top_10_percent if t["has_emoji"])
-        if emoji_in_top / len(top_10_percent) > 0.7:
-            best_practices.append("Emoji usage correlates with higher engagement")
-        
-        cta_in_top = sum(1 for t in top_10_percent if t["has_cta"])
-        if cta_in_top / len(top_10_percent) > 0.7:
-            best_practices.append("CTAs drive more engagement")
-        
-        bait_in_top = sum(1 for t in top_10_percent if t.get("is_engagement_bait", False))
-        if bait_in_top / len(top_10_percent) > 0.5:
-            best_practices.append("Engagement bait posts dominate top performers")
-        
-        self.insights["best_practices"] = best_practices
-        
-        avoid_patterns = []
-        bottom_categories = {}
-        for tweet in bottom_10_percent:
-            category = tweet["category"]
-            bottom_categories[category] = bottom_categories.get(category, 0) + 1
-        
-        if bottom_categories:
-            worst_category = max(bottom_categories, key=bottom_categories.get)
-            avoid_patterns.append(f"Category '{worst_category}' shows lower engagement")
-        
-        self.insights["avoid_patterns"] = avoid_patterns
-    
-    def _log_key_insights(self):
-        """Log key learning insights"""
-        write_log("=== 🎯 KEY LEARNING INSIGHTS ===")
-        
-        if self.insights["category_performance"]:
-            sorted_cats = sorted(
-                self.insights["category_performance"].items(),
-                key=lambda x: x[1]["avg_engagement"],
-                reverse=True
-            )
-            write_log(f"🏆 Top Category: {sorted_cats[0][0]} (avg: {sorted_cats[0][1]['avg_engagement']:.2f})")
-        
-        if self.insights["time_slot_performance"]:
-            sorted_times = sorted(
-                self.insights["time_slot_performance"].items(),
-                key=lambda x: x[1]["avg_engagement"],
-                reverse=True
-            )
-            write_log(f"⏰ Best Time Slot: {sorted_times[0][0]} (avg: {sorted_times[0][1]['avg_engagement']:.2f})")
-        
-        if self.insights.get("emoji_impact"):
-            improvement = self.insights["emoji_impact"]["improvement_factor"]
-            write_log(f"😀 Emoji Impact: {improvement:.2f}x engagement boost")
-        
-        if self.insights.get("cta_effectiveness"):
-            improvement = self.insights["cta_effectiveness"]["improvement_factor"]
-            write_log(f"❓ CTA Impact: {improvement:.2f}x engagement boost")
-        
-        if self.insights.get("engagement_bait_effectiveness"):
-            improvement = self.insights["engagement_bait_effectiveness"]["improvement_factor"]
-            bait_count = self.insights["engagement_bait_effectiveness"]["bait_count"]
-            write_log(f"🔥 Engagement Bait Impact: {improvement:.2f}x boost ({bait_count} bait posts tested)")
-        
-        for practice in self.insights["best_practices"]:
-            write_log(f"✓ {practice}")
-    
-    def get_recommended_category(self, available_categories):
-        """Get recommended category based on learning"""
-        if not self.insights["category_performance"]:
-            return random.choice(available_categories)
-        
-        category_scores = {}
-        for category in available_categories:
-            if category in self.insights["category_performance"]:
-                stats = self.insights["category_performance"][category]
-                category_scores[category] = stats["avg_engagement"]
-            else:
-                category_scores[category] = 0
-        
-        if random.random() < 0.8 and category_scores:
-            return max(category_scores, key=category_scores.get)
-        else:
-            return random.choice(available_categories)
-    
-    def get_recommended_time_slot(self, current_time):
-        """Check if current time is optimal based on learning"""
-        if not self.insights["time_slot_performance"]:
-            return True
-        
-        time_slot = current_time
-        if time_slot in self.insights["time_slot_performance"]:
-            stats = self.insights["time_slot_performance"][time_slot]
-            avg_all = sum(s["avg_engagement"] for s in self.insights["time_slot_performance"].values()) / len(self.insights["time_slot_performance"])
-            return stats["avg_engagement"] >= avg_all * 0.8
-        
-        return True
-    
-    def should_use_emoji(self):
-        """Recommend emoji usage based on learning"""
-        if not self.insights.get("emoji_impact"):
-            return True
-        return self.insights["emoji_impact"]["improvement_factor"] > 1.0
-    
-    def should_use_cta(self):
-        """Recommend CTA usage based on learning"""
-        if not self.insights.get("cta_effectiveness"):
-            return True
-        return self.insights["cta_effectiveness"]["improvement_factor"] > 1.0
-
-# =========================
 # CONFIGURATION
 # =========================
 
@@ -604,469 +145,125 @@ learning_system = PerformanceLearningSystem()
 
 LOG_FILE = "bot_log.txt"
 POSTED_LOG = os.path.join(STORAGE_PATH, "posted_links.txt")
-CONTENT_HASH_LOG = os.path.join(STORAGE_PATH, "posted_content_hashes.txt")
 
 DAILY_POST_LIMIT = 15
 POST_INTERVAL_MINUTES = 90
 last_post_time = None
-FRESHNESS_WINDOW = timedelta(hours=72)
 
-DAILY_REPLY_LIMIT = 3
-
-PREMIUM_POSTING_TIMES = [
-    "08:00", "12:00", "18:00", "22:00"
+# CRYPTO-OPTIMIZED POSTING TIMES (US + Asian markets)
+POSTING_TIMES = [
+    "01:00",  # Asian morning
+    "06:00",  # Asian afternoon
+    "09:00",  # US pre-market
+    "13:00",  # US lunch
+    "14:00",  # US afternoon
+    "17:00",  # US evening
+    "21:00",  # US night / Asian early morning
+    "23:00"   # US late night / Asian morning
 ]
 
-GLOBAL_POSTING_TIMES = [
-    "02:00", "04:00", "06:00", "10:00", "20:00", "00:00", "14:00", "16:00"
+# CRYPTO CONTENT TYPES (based on engagement strategy)
+CRYPTO_CONTENT_TYPES = [
+    "educational",      # "Here's how X works"
+    "market_analysis",  # "Why BTC is doing X"
+    "contrarian",       # "Everyone's wrong about..."
+    "question",         # "Which do you prefer: X or Y?"
+    "hot_take",         # Bold controversial opinions
+    "breakdown"         # "5 things about..."
 ]
 
-MAIN_POSTING_TIMES = PREMIUM_POSTING_TIMES + GLOBAL_POSTING_TIMES
-
-REPLY_TIMES = [
-    "10:25", "16:30", "22:30"
+# CRYPTO RSS FEEDS
+RSS_FEEDS = [
+    "https://cointelegraph.com/rss",
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://crypto.news/feed/",
+    "https://decrypt.co/feed",
+    "https://bitcoinmagazine.com/.rss/full/"
 ]
 
-GLOBAL_CATEGORIES = ["EPL", "F1", "MotoGP", "Cycling"]
-BUSINESS_CATEGORIES = ["Crypto", "Tesla", "Space Exploration"]
-
-RSS_FEEDS = {
-    "EPL": [
-        "http://feeds.arsenal.com/arsenal-news",
-        "https://www.premierleague.com/news",
-        "https://www.skysports.com/rss/12",
-        "http://feeds.bbci.co.uk/sport/football/premier-league/rss.xml",
-        "https://www.theguardian.com/football/premierleague/rss",
-        "https://arseblog.com/feed/"
-    ],
-    "F1": [
-        "https://www.formula1.com/en/latest/all.xml",
-        "https://www.autosport.com/rss/f1/news/",
-        "https://www.motorsport.com/rss/f1/news/"
-    ],
-    "MotoGP": [
-        "https://www.motogp.com/en/news/rss",
-        "https://www.autosport.com/rss/motogp/news/",
-        "https://www.crash.net/rss/motogp"
-    ],
-    "Crypto": [
-        "https://cointelegraph.com/rss",
-        "https://www.coindesk.com/arc/outboundfeeds/rss/",
-        "https://crypto.news/feed/"
-    ],
-    "Cycling": [
-        "http://feeds2.feedburner.com/cyclingnews/news",
-        "https://cycling.today/feed",
-        "https://velo.outsideonline.com/feed/"
-    ],
-    "Space Exploration": [
-        "https://spacenews.com/feed",
-        "https://phys.org/rss-feed/space-news/",
-        "https://www.space.com/feeds/all"
-    ],
-    "Tesla": [
-        "https://insideevs.com/rss/articles/all",
-        "https://electrek.co/feed/"
-    ]
-}
-
-PREMIUM_CONTENT_STRATEGIES = {
-    "EPL": {
-        "focus": "Business strategy, player valuations, commercial insights",
-        "tone": "Professional analysis with strategic implications",
-        "cta_templates": [
-            "How does this reshape the Premier League's economic landscape?",
-            "What's the ROI on this move for club stakeholders?",
-            "Which clubs are positioned to capitalize on this trend?",
-            "How will this impact broadcast revenue models?",
-            "What's your read on the market dynamics here?"
-        ]
-    },
-    "F1": {
-        "focus": "Technology innovation, team strategies, commercial partnerships",
-        "tone": "Technical expertise with business applications",
-        "cta_templates": [
-            "Which team benefits most from this technical development?",
-            "How will this innovation transfer to consumer automotive?",
-            "What's the competitive advantage timeline here?",
-            "Which manufacturers are best positioned to adapt?",
-            "How does this change the cost-performance equation?"
-        ]
-    },
-    "Crypto": {
-        "focus": "Regulatory compliance, institutional adoption, market structure",
-        "tone": "Institutional-grade analysis and implications",
-        "cta_templates": [
-            "What's the regulatory precedent this sets?",
-            "How will institutional portfolios adjust to this?",
-            "Which compliance frameworks address this scenario?",
-            "What's the systemic risk assessment here?",
-            "How does this impact market structure evolution?"
-        ]
-    },
-    "Tesla": {
-        "focus": "Innovation leadership, market disruption, investment thesis",
-        "tone": "Strategic business analysis and market positioning",
-        "cta_templates": [
-            "What's Tesla's moat in this competitive landscape?",
-            "How does this accelerate the EV adoption curve?",
-            "Which legacy automakers face the biggest disruption?",
-            "What's the supply chain implication for investors?",
-            "How will this reshape automotive profit margins?"
-        ]
-    },
-    "Space Exploration": {
-        "focus": "Commercial space economy, technology transfer, investment opportunities",
-        "tone": "Strategic business and technology analysis", 
-        "cta_templates": [
-            "Which sectors benefit from this space technology spillover?",
-            "What's the commercial viability timeline?",
-            "How does this impact the space economy valuation?",
-            "Which earthbound applications show the most promise?",
-            "What's the geopolitical competitive advantage here?"
-        ]
-    },
-    "Cycling": {
-        "focus": "Sports business, technology innovation, market trends",
-        "tone": "Industry analysis and business perspective",
-        "cta_templates": [
-            "How will this technology disrupt the cycling industry?",
-            "What's the market opportunity for equipment manufacturers?",
-            "Which demographic trends does this capitalize on?",
-            "How does this impact sponsorship valuations?",
-            "What's the consumer adoption pathway here?"
-        ]
-    },
-    "MotoGP": {
-        "focus": "Technology transfer, commercial partnerships, market impact",
-        "tone": "Technical and business analysis",
-        "cta_templates": [
-            "Which motorcycle manufacturers gain competitive edge?",
-            "How will this tech transfer to consumer bikes?",
-            "What's the safety ROI for the racing investment?",
-            "Which partnerships are positioned to scale this?",
-            "How does this reshape performance benchmarks?"
-        ]
-    }
+# CRYPTO HASHTAGS
+CRYPTO_HASHTAGS = {
+    "primary": ["#Crypto", "#Bitcoin", "#Ethereum", "#BTC", "#ETH"],
+    "trending": ["#CryptoNews", "#Blockchain", "#DeFi", "#Web3", "#Altcoins"],
+    "specific": ["#Solana", "#Cardano", "#Polygon", "#BNB", "#XRP"]
 }
 
 # =========================
-# ENGAGEMENT BAITING STRATEGIES
+# CRYPTO ENGAGEMENT STRATEGIES
 # =========================
 
-ENGAGEMENT_BAIT_PATTERNS = {
-    "EPL": {
-        "controversial_takes": [
-            "Unpopular opinion:",
-            "Hot take:",
-            "Nobody wants to admit this but",
-            "The data doesn't lie:",
-            "Change my mind:"
-        ],
-        "debate_starters": [
-            "{statement} Overrated or underrated?",
-            "Is {player/team} actually {controversial_claim}?",
-            "Why is nobody talking about {statement}?",
-            "Real talk: {controversial_statement}",
-            "{statement} - and it's not even close."
-        ],
-        "divisive_claims": [
-            "better than", "overrated", "underrated", "fraud", "carry",
-            "exposed", "past their prime", "never was", "fluke"
-        ]
-    },
-    "F1": {
-        "controversial_takes": [
-            "Unpopular opinion:",
-            "The truth nobody wants to hear:",
-            "Let's be honest:",
-            "Hot take:",
-            "Controversial but true:"
-        ],
-        "debate_starters": [
-            "{driver} vs {driver} - and it's not even close",
-            "Is {team} being carried by {factor}?",
-            "Why does everyone ignore {controversial_fact}?",
-            "{statement} Agree or disagree?",
-            "Real question: Is {driver} actually {claim}?"
-        ],
-        "divisive_claims": [
-            "overrated", "lucky", "carried by the car", "past their peak",
-            "never was that good", "only won because", "exposed"
-        ]
-    },
-    "Crypto": {
-        "controversial_takes": [
-            "Unpopular opinion:",
-            "Hard truth:",
-            "Nobody wants to hear this but",
-            "Controversial take:",
-            "Real talk:"
-        ],
-        "debate_starters": [
-            "Is {coin} actually {controversial_claim}?",
-            "{statement} - change my mind",
-            "Why is nobody talking about {risk/opportunity}?",
-            "{coin} vs {coin} - which ages better?",
-            "Hot take: {controversial_statement}"
-        ],
-        "divisive_claims": [
-            "dead", "scam", "overvalued", "undervalued", "pump and dump",
-            "ponzi", "outdated", "will flip", "going to zero"
-        ]
-    },
-    "Tesla": {
-        "controversial_takes": [
-            "Unpopular opinion:",
-            "The data shows:",
-            "Nobody wants to admit:",
-            "Controversial but true:",
-            "Hot take:"
-        ],
-        "debate_starters": [
-            "Is Tesla actually {controversial_claim}?",
-            "{competitor} vs Tesla - and why it matters",
-            "Why aren't we talking about {issue}?",
-            "{statement} Overhyped or undervalued?",
-            "Real talk: {controversial_statement}"
-        ],
-        "divisive_claims": [
-            "overvalued", "behind", "ahead of", "can't compete",
-            "losing market share", "dominating", "failing at"
-        ]
-    },
-    "Space Exploration": {
-        "controversial_takes": [
-            "Unpopular opinion:",
-            "The hard truth:",
-            "Nobody's saying this but",
-            "Controversial take:",
-            "Hot take:"
-        ],
-        "debate_starters": [
-            "{company} vs {company} - who wins?",
-            "Is {project} actually {controversial_claim}?",
-            "Why is everyone ignoring {fact}?",
-            "{statement} Revolutionary or overhyped?",
-            "Real question: {controversial_statement}"
-        ],
-        "divisive_claims": [
-            "waste of money", "behind schedule", "ahead of", "can't deliver",
-            "overengineered", "outdated approach", "revolutionary"
-        ]
-    },
-    "Cycling": {
-        "controversial_takes": [
-            "Unpopular opinion:",
-            "Hot take:",
-            "Nobody wants to say this but",
-            "Controversial but true:",
-            "Real talk:"
-        ],
-        "debate_starters": [
-            "{rider} vs {rider} - who's actually better?",
-            "Is {team} being carried by {factor}?",
-            "Why is nobody discussing {controversial_fact}?",
-            "{statement} Overrated or underrated?",
-            "{controversial_statement} - change my mind"
-        ],
-        "divisive_claims": [
-            "overrated", "past their prime", "carried by the team",
-            "lucky", "never was", "one-hit wonder"
-        ]
-    },
-    "MotoGP": {
-        "controversial_takes": [
-            "Unpopular opinion:",
-            "Hot take:",
-            "The truth:",
-            "Controversial but true:",
-            "Nobody wants to admit:"
-        ],
-        "debate_starters": [
-            "{rider} vs {rider} - and it's not close",
-            "Is {rider} actually {controversial_claim}?",
-            "Why aren't we talking about {fact}?",
-            "{statement} Agree or disagree?",
-            "Real talk: {controversial_statement}"
-        ],
-        "divisive_claims": [
-            "overrated", "carried by the bike", "lucky", "past their peak",
-            "never deserved", "fluke", "exposed"
-        ]
-    }
-}
-
-COMPARISON_TEMPLATES = {
-    "EPL": [
-        "{player1} vs {player2} in {metric}",
-        "Who had the better {timeframe}: {team1} or {team2}?",
-        "{manager1}'s {team1} vs {manager2}'s {team2} - who wins?"
+CRYPTO_ENGAGEMENT_TEMPLATES = {
+    "question": [
+        "Which would you choose: {option1} or {option2}?",
+        "Quick poll: {option1} vs {option2}?",
+        "Honest question: {option1} or {option2}?",
+        "You can only pick one: {option1} or {option2}. Which is it?",
+        "{question} Drop your answer below 👇"
     ],
-    "F1": [
-        "{driver1} vs {driver2} - who's the real GOAT?",
-        "{team1} dominance vs {team2} dominance - which was more impressive?",
-        "{era1} F1 vs {era2} F1 - which was better?"
+    
+    "hot_take": [
+        "Unpopular opinion: {statement}",
+        "Hot take: {statement}",
+        "Controversial but true: {statement}",
+        "Nobody wants to hear this but {statement}",
+        "Real talk: {statement}"
     ],
-    "Crypto": [
-        "{coin1} vs {coin2} - which survives the next bear market?",
-        "2017 bull run vs 2021 bull run - which was crazier?",
-        "{technology1} vs {technology2} - which wins long term?"
+    
+    "contrarian": [
+        "Everyone's wrong about {topic}. Here's why:",
+        "The truth about {topic} that nobody talks about:",
+        "Why {mainstream_belief} is actually backwards:",
+        "Unpopular opinion: {topic} is completely misunderstood",
+        "Let's be honest about {topic}:"
+    ],
+    
+    "educational": [
+        "Here's how {concept} actually works:",
+        "Understanding {concept} in simple terms:",
+        "{concept} explained (no BS):",
+        "Quick breakdown: {concept}",
+        "What you need to know about {concept}:"
+    ],
+    
+    "market_analysis": [
+        "Why {coin} is {movement} today:",
+        "What's really driving {coin}'s {movement}:",
+        "The real reason behind {coin}'s {movement}:",
+        "{coin} {movement} - here's what's happening:",
+        "Breaking down {coin}'s {movement}:"
+    ],
+    
+    "breakdown": [
+        "5 things about {topic} you need to know:",
+        "3 reasons why {topic} matters:",
+        "The top {number} signs of {topic}:",
+        "{number} facts about {topic} that will surprise you:",
+        "Here are {number} things everyone gets wrong about {topic}:"
     ]
 }
 
-def should_use_engagement_bait():
-    """Decide if we should use engagement bait (30% of posts)"""
-    return random.random() < 0.3
+CRYPTO_QUESTION_TEMPLATES = [
+    "Bitcoin or Ethereum for the next 5 years?",
+    "DeFi or CeFi - which is the future?",
+    "Would you rather: 10 BTC in 2010 or $10M cash today?",
+    "Bull market or bear market - which teaches you more?",
+    "Holding or trading - which makes you more money?",
+    "Layer 1 or Layer 2 - where's the real opportunity?",
+    "Staking or lending - which is better for passive income?",
+    "Privacy coins: necessary innovation or regulatory nightmare?"
+]
 
-def generate_engagement_bait_post(title, category, article_url):
-    """Generate a provocative post designed to drive engagement through debate"""
-    
-    if category not in ENGAGEMENT_BAIT_PATTERNS:
-        return generate_content_aware_post(title, category, article_url)
-    
-    patterns = ENGAGEMENT_BAIT_PATTERNS[category]
-    
-    # Choose engagement style
-    bait_style = random.choice(["controversial_take", "debate_starter", "comparison"])
-    
-    if bait_style == "controversial_take":
-        opener = random.choice(patterns["controversial_takes"])
-        prompt = f"""Create a provocative Twitter post about: {title}
+CRYPTO_HOT_TAKES = [
+    "Most crypto 'investors' are just gamblers with better vocabulary",
+    "The next bull run will look nothing like the last one",
+    "NFTs solved a real problem, people just hate the art",
+    "Regulation will make crypto bigger, not smaller",
+    "99% of altcoins will go to zero",
+    "The real crypto wealth is made in bear markets",
+    "Technical analysis in crypto is modern astrology"
+]
 
-Style: Controversial hot take that sparks debate
-Opener: "{opener}"
-Category: {category}
-
-Requirements:
-- Start with the opener phrase
-- Make a bold, debatable claim based on the article
-- Be provocative but not offensive
-- Drive replies and quote tweets
-- Under 180 characters (leave room for URL and hashtags)
-- No buzzwords, be direct and bold
-
-Write ONLY the tweet text:"""
-
-    elif bait_style == "debate_starter":
-        template = random.choice(patterns["debate_starters"])
-        prompt = f"""Create a debate-starting Twitter post about: {title}
-
-Style: Question that forces people to pick sides
-Template style: "{template}"
-Category: {category}
-
-Requirements:
-- Frame as a question or comparison
-- Make people want to defend their position
-- Be thought-provoking, not trolling
-- Drive engagement through disagreement
-- Under 180 characters (leave room for URL and hashtags)
-- End with a question or call to pick sides
-
-Write ONLY the tweet text:"""
-
-    else:  # comparison
-        prompt = f"""Create a comparison-based Twitter post about: {title}
-
-Style: "X vs Y" or ranking that sparks debate
-Category: {category}
-
-Requirements:
-- Frame as direct comparison or ranking
-- Make it debatable (no obvious answers)
-- Invite disagreement and discussion
-- Under 180 characters (leave room for URL and hashtags)
-- Use "vs" or "better than" language
-- Be bold and definitive
-
-Write ONLY the tweet text:"""
-
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": f"You create provocative Twitter content that drives engagement through debate and discussion. Focus on bold takes that make people want to reply and argue their position. Stay within category expertise: {category}."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=100,
-            temperature=0.85
-        )
-        
-        bait_text = response.choices[0].message.content.strip()
-        
-        # Ensure it ends with engagement driver
-        if not any(char in bait_text for char in ['?', ':', '...']):
-            engagement_enders = [
-                "Thoughts?",
-                "Agree or disagree?",
-                "Change my mind.",
-                "Who's wrong here?",
-                "Fight me."
-            ]
-            if len(bait_text) < 160:
-                bait_text += f" {random.choice(engagement_enders)}"
-        
-        write_log(f"🔥 Generated engagement bait: {bait_text[:50]}...")
-        return bait_text
-        
-    except Exception as e:
-        write_log(f"Engagement bait generation failed: {e}")
-        return generate_content_aware_post(title, category, article_url)
-
-def add_poll_option_tease(tweet_text):
-    """Add text that suggests a poll-like question to drive replies"""
-    poll_phrases = [
-        "A or B?",
-        "Which side are you on?",
-        "Team A or Team B?",
-        "Pick one:",
-        "This or that?"
-    ]
-    
-    if len(tweet_text) < 200 and not any(phrase in tweet_text for phrase in poll_phrases):
-        if random.random() < 0.3:
-            return f"{tweet_text} {random.choice(poll_phrases)}"
-    
-    return tweet_text
-
-TRENDING_HASHTAGS = {
-    "EPL": {
-        "primary": ["#PremierLeague", "#EPL", "#Football"],
-        "secondary": ["#Arsenal", "#ManCity", "#Liverpool", "#Chelsea"],
-        "trending": ["#MatchDay", "#FootballTwitter"]
-    },
-    "F1": {
-        "primary": ["#F1", "#Formula1"],
-        "secondary": ["#Verstappen", "#Hamilton", "#Ferrari"],
-        "trending": ["#F1News", "#Racing"]
-    },
-    "Crypto": {
-        "primary": ["#Bitcoin", "#Cryptocurrency"],
-        "secondary": ["#Ethereum", "#DeFi", "#BTC"],
-        "trending": ["#CryptoNews", "#Blockchain"]
-    },
-    "Tesla": {
-        "primary": ["#Tesla", "#ElectricCars"],
-        "secondary": ["#ElonMusk", "#EV"],
-        "trending": ["#CleanEnergy", "#Innovation"]
-    },
-    "Space Exploration": {
-        "primary": ["#Space", "#SpaceX"],
-        "secondary": ["#NASA", "#Mars"],
-        "trending": ["#SpaceExploration"]
-    },
-    "Cycling": {
-        "primary": ["#Cycling", "#ProCycling"],
-        "secondary": ["#TourDeFrance", "#BikeRacing"],
-        "trending": ["#CyclingLife"]
-    },
-    "MotoGP": {
-        "primary": ["#MotoGP", "#MotorcycleRacing"],
-        "secondary": ["#GrandPrix", "#Racing"],
-        "trending": ["#MotoGPNews"]
-    }
-}
+CRYPTO_EMOJIS = ["₿", "💎", "🚀", "📊", "📈", "📉", "⚡", "🔥", "💰", "🎯"]
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -1107,207 +304,215 @@ def write_log(message, level="info"):
         logging.info(message)
 
 # =========================
-# VISUAL ELEMENTS ENHANCEMENT
+# CRYPTO CONTENT GENERATION
 # =========================
 
-def add_visual_elements_to_tweet(tweet_text, category):
-    """Add visual elements to increase engagement"""
+def generate_crypto_question(title):
+    """Generate engaging question-based content"""
+    template = random.choice(CRYPTO_ENGAGEMENT_TEMPLATES["question"])
     
-    category_emojis = {
-        "EPL": {
-            "breaking": "⚽", "news": "⚽",
-            "analysis": "📊", "stats": "📊", "data": "📊",
-            "transfer": "🔄", "signing": "🔄",
-            "match": "🏆", "win": "🏆", "victory": "🏆",
-            "goal": "⚡", "score": "⚡"
-        },
-        "F1": {
-            "breaking": "🏎️", "news": "🏎️",
-            "analysis": "📈", "performance": "📈",
-            "tech": "🔧", "technical": "🔧", "innovation": "🔧",
-            "race": "🏁", "qualifying": "🏁",
-            "fastest": "⚡", "speed": "⚡"
-        },
-        "Crypto": {
-            "breaking": "🚨", "alert": "🚨",
-            "analysis": "📊", "chart": "📊",
-            "trend": "📈", "surge": "📈", "rally": "📈",
-            "regulation": "⚖️", "legal": "⚖️",
-            "bitcoin": "₿", "btc": "₿"
-        },
-        "Tesla": {
-            "breaking": "⚡", "news": "⚡",
-            "innovation": "🚀", "technology": "🚀",
-            "data": "📊", "quarterly": "📊", "earnings": "📊",
-            "battery": "🔋", "electric": "🔋",
-            "production": "🏭", "delivery": "🏭"
-        },
-        "Space Exploration": {
-            "breaking": "🚀", "launch": "🚀",
-            "discovery": "🔭", "observe": "🔭",
-            "mission": "🛰️", "satellite": "🛰️",
-            "mars": "🔴", "moon": "🌙",
-            "success": "✨", "achieve": "✨"
-        },
-        "Cycling": {
-            "breaking": "🚴", "news": "🚴",
-            "race": "🏆", "stage": "🏆", "win": "🏆",
-            "tech": "⚙️", "equipment": "⚙️",
-            "climb": "⛰️", "mountain": "⛰️",
-            "sprint": "⚡", "attack": "⚡"
-        },
-        "MotoGP": {
-            "breaking": "🏍️", "news": "🏍️",
-            "race": "🏁", "qualifying": "🏁",
-            "tech": "⚙️", "technical": "⚙️",
-            "fastest": "⚡", "lap": "⚡",
-            "champion": "🏆", "podium": "🏆"
-        }
+    # Use GPT to extract key concepts for comparison
+    prompt = f"""Based on this crypto news: "{title}"
+
+Create a simple, engaging question that makes people want to reply.
+Format: "X or Y?" where X and Y are two clear choices.
+Keep it under 150 characters.
+
+Write ONLY the question:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You create engaging crypto questions that drive replies. Be concise and force a choice."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=60,
+            temperature=0.8
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return random.choice(CRYPTO_QUESTION_TEMPLATES)
+
+def generate_crypto_hot_take(title):
+    """Generate bold, controversial takes"""
+    prompt = f"""Based on this crypto news: "{title}"
+
+Create a bold, controversial take that sparks debate.
+Start with: "Unpopular opinion:", "Hot take:", or "Real talk:"
+Be provocative but not offensive.
+Under 200 characters.
+
+Write ONLY the tweet:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You create controversial but insightful crypto takes that drive engagement through debate."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=80,
+            temperature=0.9
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return f"Hot take: {random.choice(CRYPTO_HOT_TAKES)}"
+
+def generate_contrarian_take(title):
+    """Generate contrarian analysis"""
+    template = random.choice(CRYPTO_ENGAGEMENT_TEMPLATES["contrarian"])
+    
+    prompt = f"""Based on this crypto news: "{title}"
+
+Create a contrarian take that challenges mainstream thinking.
+Be thought-provoking and data-driven if possible.
+Under 200 characters.
+
+Write ONLY the tweet:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You create contrarian crypto analysis that challenges mainstream narratives."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=80,
+            temperature=0.8
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return f"Everyone's wrong about {title[:50]}... here's why:"
+
+def generate_educational_breakdown(title):
+    """Generate educational content"""
+    prompt = f"""Based on this crypto news: "{title}"
+
+Create an educational tweet that breaks down a concept.
+Start with "Here's how..." or "Understanding..."
+Make it accessible and valuable.
+Under 200 characters.
+
+Write ONLY the tweet:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You create educational crypto content that's easy to understand and valuable."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=80,
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return f"Here's what {title[:60]} actually means:"
+
+def generate_market_analysis(title):
+    """Generate market analysis content"""
+    prompt = f"""Based on this crypto news: "{title}"
+
+Create a market analysis tweet explaining the "why" behind the move.
+Focus on causes and implications.
+Under 200 characters.
+
+Write ONLY the tweet:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You create insightful crypto market analysis that explains price movements and trends."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=80,
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return f"Why this matters for crypto: {title[:80]}"
+
+def generate_listicle_thread(title):
+    """Generate list-based content"""
+    numbers = ["3", "5", "7"]
+    number = random.choice(numbers)
+    
+    prompt = f"""Based on this crypto news: "{title}"
+
+Create a tweet announcing a {number}-point breakdown.
+Format: "{number} things about [topic]:"
+Make it compelling and promise value.
+Under 180 characters.
+
+Write ONLY the tweet:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You create compelling list-based crypto content that drives saves and shares."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=70,
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return f"{number} things you need to know about {title[:60]}"
+
+def generate_crypto_content(title, content_type):
+    """Main content generation router"""
+    generators = {
+        "question": generate_crypto_question,
+        "hot_take": generate_crypto_hot_take,
+        "contrarian": generate_contrarian_take,
+        "educational": generate_educational_breakdown,
+        "market_analysis": generate_market_analysis,
+        "breakdown": generate_listicle_thread
     }
     
-    emojis = category_emojis.get(category, {})
-    if not emojis:
+    generator = generators.get(content_type, generate_educational_breakdown)
+    return generator(title)
+
+def add_crypto_visual_elements(tweet_text):
+    """Add crypto-specific emojis"""
+    # Don't add if already has emoji
+    if any(emoji in tweet_text for emoji in CRYPTO_EMOJIS):
         return tweet_text
     
-    if tweet_text and tweet_text[0] in "⚽📊🔄🏆⚡🏎️📈🔧🏁🚨⚖️₿🚀🔋🏭🔭🛰️🔴🌙✨🚴⛰️🏍️":
-        return tweet_text
+    # Add context-appropriate emoji
+    text_lower = tweet_text.lower()
     
-    tweet_lower = tweet_text.lower()
-    for keyword, emoji in emojis.items():
-        if keyword in tweet_lower:
-            return f"{emoji} {tweet_text}"
-    
-    fallback_emojis = {
-        "EPL": "⚽",
-        "F1": "🏎️",
-        "Crypto": "📊",
-        "Tesla": "⚡",
-        "Space Exploration": "🚀",
-        "Cycling": "🚴",
-        "MotoGP": "🏍️"
-    }
-    
-    if category in fallback_emojis:
-        return f"{fallback_emojis[category]} {tweet_text}"
-    
-    return tweet_text
+    if any(word in text_lower for word in ["bitcoin", "btc"]):
+        return f"₿ {tweet_text}"
+    elif any(word in text_lower for word in ["up", "surge", "pump", "bull"]):
+        return f"📈 {tweet_text}"
+    elif any(word in text_lower for word in ["down", "dump", "bear", "crash"]):
+        return f"📉 {tweet_text}"
+    elif any(word in text_lower for word in ["analysis", "breakdown", "data"]):
+        return f"📊 {tweet_text}"
+    elif any(word in text_lower for word in ["hot", "fire", "controversial"]):
+        return f"🔥 {tweet_text}"
+    else:
+        return f"{random.choice(CRYPTO_EMOJIS)} {tweet_text}"
 
-# =========================
-# CONTENT STRATEGIES
-# =========================
-
-def get_contextual_cta(category, title):
-    """Generate contextual CTA based on article content"""
-    strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
-    if not strategy or not strategy.get("cta_templates"):
-        return "What's your take on this development?"
+def get_crypto_hashtags():
+    """Get optimized crypto hashtags"""
+    selected = random.sample(CRYPTO_HASHTAGS["primary"], 2)
     
-    title_lower = title.lower()
-    cta_templates = strategy["cta_templates"]
+    if random.random() < 0.4:
+        selected.append(random.choice(CRYPTO_HASHTAGS["trending"]))
     
-    cta_keywords = {
-        0: ["partnership", "deal", "merger", "acquisition", "investment"],
-        1: ["technology", "innovation", "breakthrough", "development", "tech"],
-        2: ["market", "competition", "competitor", "industry", "business"],
-        3: ["regulation", "policy", "compliance", "legal", "government"],
-        4: ["financial", "revenue", "profit", "economic", "cost", "pricing"]
-    }
-    
-    for i, keywords in cta_keywords.items():
-        if any(keyword in title_lower for keyword in keywords) and i < len(cta_templates):
-            return cta_templates[i]
-    
-    return random.choice(cta_templates)
-
-def get_example_openers(category):
-    """Get category-specific example openers"""
-    examples = {
-        "EPL": [
-            "Financial Fair Play data reveals...",
-            "Transfer market analysis shows...", 
-            "Commercial performance indicates...",
-            "Revenue projections suggest..."
-        ],
-        "F1": [
-            "Aerodynamic regulations reshape...",
-            "Technical partnerships indicate...",
-            "Performance data suggests...",
-            "Innovation cycles show..."
-        ],
-        "Crypto": [
-            "Institutional flow patterns reveal...",
-            "Regulatory frameworks suggest...",
-            "Market structure analysis shows...",
-            "Adoption metrics indicate..."
-        ],
-        "Tesla": [
-            "Manufacturing efficiency data shows...",
-            "Market positioning analysis reveals...",
-            "Supply chain indicators suggest...",
-            "Innovation pipeline indicates..."
-        ],
-        "Space Exploration": [
-            "Commercial viability studies show...",
-            "Technology transfer patterns reveal...",
-            "Mission economics suggest...",
-            "Industry partnerships indicate..."
-        ],
-        "Cycling": [
-            "Performance analytics reveal...",
-            "Equipment innovation data shows...",
-            "Sponsorship metrics suggest...",
-            "Market trend analysis indicates..."
-        ],
-        "MotoGP": [
-            "Technical development cycles show...",
-            "Safety innovation data reveals...",
-            "Manufacturer partnerships indicate...",
-            "Performance benchmarks suggest..."
-        ]
-    }
-    
-    return examples.get(category, [
-        "Market implications suggest...",
-        "Strategic analysis reveals...",
-        "Industry data shows...",
-        "Performance metrics indicate..."
-    ])
-
-# =========================
-# MAIN CONTENT POSTING
-# =========================
-
-def validate_env_vars():
-    """Validate required environment variables"""
-    required_vars = ["OPENAI_API_KEY", "TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"]
-    missing = [var for var in required_vars if not os.getenv(var)]
-    if missing:
-        write_log(f"Missing environment variables: {', '.join(missing)}", level="error")
-        raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
-
-def get_trending_hashtags(category):
-    """Get optimized hashtags for better reach"""
-    hashtag_data = TRENDING_HASHTAGS.get(category)
-    if not hashtag_data:
-        return []
-    
-    selected = random.sample(hashtag_data["primary"], 1)
-    
-    if len(hashtag_data["secondary"]) >= 1:
-        selected.extend(random.sample(hashtag_data["secondary"], 1))
-    
-    if random.random() < 0.3 and hashtag_data["trending"]:
-        selected.append(random.choice(hashtag_data["trending"]))
+    if random.random() < 0.2:
+        selected.append(random.choice(CRYPTO_HASHTAGS["specific"]))
     
     return selected[:3]
 
-def optimize_hashtags_for_reach(tweet_text, category):
-    """Add optimized hashtags"""
-    hashtags = get_trending_hashtags(category)
-    
-    if not hashtags:
-        return tweet_text
-    
+def optimize_hashtags(tweet_text):
+    """Add hashtags if space allows"""
+    hashtags = get_crypto_hashtags()
     available_space = 280 - len(tweet_text) - 5
     hashtag_text = " " + " ".join(hashtags)
     
@@ -1316,8 +521,12 @@ def optimize_hashtags_for_reach(tweet_text, category):
     
     return tweet_text
 
+# =========================
+# CONTENT FETCHING & POSTING
+# =========================
+
 def fetch_rss(feed_url):
-    """Fetch news from an RSS feed"""
+    """Fetch news from RSS feed"""
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         response = requests.get(feed_url, headers=headers, timeout=15)
@@ -1325,7 +534,7 @@ def fetch_rss(feed_url):
         feed = feedparser.parse(response.content)
         
         articles = []
-        for entry in feed.entries[:3]:
+        for entry in feed.entries[:5]:
             article = {
                 "title": entry.title,
                 "url": entry.link,
@@ -1337,142 +546,17 @@ def fetch_rss(feed_url):
         write_log(f"Error fetching RSS from {feed_url}: {e}")
         return []
 
-def get_articles_for_category(category):
-    """Get articles for a category"""
-    feeds = RSS_FEEDS.get(category, [])
+def get_crypto_articles():
+    """Get crypto articles from all feeds"""
     articles = []
     
-    for feed in feeds[:2]:
+    for feed in RSS_FEEDS:
         feed_articles = fetch_rss(feed)
         if feed_articles:
             articles.extend(feed_articles)
-            break
     
-    write_log(f"Total articles fetched for {category}: {len(articles)}")
+    write_log(f"Total crypto articles fetched: {len(articles)}")
     return articles
-
-def is_premium_posting_time():
-    """Check if current time is optimal for premium demographics"""
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in PREMIUM_POSTING_TIMES
-
-def is_global_posting_time():
-    """Check if current time is optimal for global audiences"""
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in GLOBAL_POSTING_TIMES
-
-def should_use_premium_strategy(category):
-    """Determine if category should use premium targeting"""
-    return category in BUSINESS_CATEGORIES or is_premium_posting_time()
-
-def should_use_global_strategy(category):
-    """Determine if category should use global timing strategy"""
-    return category in GLOBAL_CATEGORIES or is_global_posting_time()
-
-def generate_premium_targeted_content(title, category, article_url):
-    """Generate content with contextual CTA and dynamic examples"""
-    strategy = PREMIUM_CONTENT_STRATEGIES.get(category)
-    if not strategy:
-        return generate_content_aware_post(title, category, article_url)
-    
-    contextual_cta = get_contextual_cta(category, title)
-    example_openers = get_example_openers(category)
-    examples_text = "\n".join([f"- \"{opener}\"" for opener in example_openers])
-    
-    prompt = f"""Create a Twitter post about: {title}
-
-Target Audience: Business professionals, decision-makers, industry experts
-Category: {category}
-Focus Areas: {strategy['focus']}
-Tone: {strategy['tone']}
-
-Requirements:
-- Appeal to professionals and decision-makers
-- Focus on strategic implications and business insights
-- Include data-driven analysis angles
-- End with this specific question: {contextual_cta}
-- Under 200 characters (leave room for URL and hashtags)
-- Avoid buzzwords, focus on substance
-
-Examples for {category}:
-{examples_text}
-
-Write ONLY the tweet text:"""
-
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": f"You create content for business professionals and industry experts. Focus on strategic insights, market implications, and data-driven analysis that appeals to decision-makers in {category}."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=120,
-            temperature=0.7
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"Premium content generation failed: {e}")
-        return generate_content_aware_post(title, category, article_url)
-
-def detect_category_with_learning():
-    """Enhanced category selection using learning insights"""
-    categories = list(RSS_FEEDS.keys())
-    
-    recommended_category = learning_system.get_recommended_category(categories)
-    
-    if is_premium_posting_time():
-        priority_categories = BUSINESS_CATEGORIES
-        available_priority = [cat for cat in priority_categories if cat in categories]
-        if available_priority and recommended_category in available_priority:
-            write_log(f"🎯 Learning + Premium: Selected {recommended_category}")
-            return recommended_category
-        elif available_priority and random.random() < 0.5:
-            category = random.choice(available_priority)
-            write_log(f"Premium override: Selected {category}")
-            return category
-    
-    if is_global_posting_time():
-        priority_categories = GLOBAL_CATEGORIES
-        available_priority = [cat for cat in priority_categories if cat in categories]
-        if available_priority and recommended_category in available_priority:
-            write_log(f"🎯 Learning + Global: Selected {recommended_category}")
-            return recommended_category
-        elif available_priority and random.random() < 0.5:
-            category = random.choice(available_priority)
-            write_log(f"Global override: Selected {category}")
-            return category
-    
-    write_log(f"🎯 Learning recommendation: {recommended_category}")
-    return recommended_category
-
-def generate_content_aware_post(title, category, article_url):
-    """Generate viral-worthy posts"""
-    try:
-        prompt = f"""Create an engaging Twitter post about: {title}
-
-Category: {category}
-Requirements:
-- Under 200 characters (leave room for URL and hashtags)
-- Ask thought-provoking questions
-- Create curiosity or controversy
-- Drive engagement and replies
-
-Write ONLY the tweet text:"""
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Create viral Twitter content that drives engagement."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=100,
-            temperature=0.8
-        )
-        return response.choices[0].message.content.strip()
-        
-    except Exception as e:
-        write_log(f"GPT generation failed: {e}")
-        return f"Breaking: {title[:100]}... What's your take?"
 
 def has_been_posted(url):
     """Check if URL already posted"""
@@ -1494,7 +578,7 @@ def can_post_now():
     time_since_last = datetime.now(pytz.UTC) - last_post_time
     return time_since_last.total_seconds() >= (POST_INTERVAL_MINUTES * 60)
 
-def shorten_url_with_fallback(long_url):
+def shorten_url(long_url):
     """URL shortening with fallback"""
     try:
         api_url = f"http://tinyurl.com/api-create.php?url={long_url}"
@@ -1505,56 +589,54 @@ def shorten_url_with_fallback(long_url):
         pass
     return long_url
 
-def post_main_content_with_learning(category):
-    """Enhanced posting with performance recording, learning, and ENGAGEMENT BAIT"""
+def post_crypto_content():
+    """Main posting function with learning integration"""
     global last_post_time
     
     if not can_post_now() or not quota_manager.can_write(1):
         write_log("Cannot post - rate limited or quota exhausted")
         return False
     
-    current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    if not learning_system.get_recommended_time_slot(current_time):
-        write_log(f"🧠 Learning system: Time slot {current_time} shows below-average performance, skipping")
-        return False
+    # Get recommended content type from learning
+    content_type = learning_system.get_recommended_content_type()
+    write_log(f"🎯 Selected content type: {content_type}")
     
-    articles = get_articles_for_category(category)
+    articles = get_crypto_articles()
     
     for article in articles:
         if has_been_posted(article["url"]):
             continue
         
-        # ===== ENGAGEMENT BAIT INTEGRATION =====
-        use_engagement_bait = should_use_engagement_bait()
-        use_premium = should_use_premium_strategy(category)
+        # Generate content based on type
+        tweet_text = generate_crypto_content(article["title"], content_type)
         
-        if use_engagement_bait:
-            write_log(f"🔥 Using ENGAGEMENT BAIT strategy for {category}")
-            tweet_text = generate_engagement_bait_post(article["title"], category, article["url"])
-            tweet_text = add_poll_option_tease(tweet_text)
-        elif use_premium:
-            write_log(f"💼 Using PREMIUM strategy for {category}")
-            tweet_text = generate_premium_targeted_content(article["title"], category, article["url"])
-        else:
-            write_log(f"📰 Using STANDARD strategy for {category}")
-            tweet_text = generate_content_aware_post(article["title"], category, article["url"])
-        # ===== END ENGAGEMENT BAIT INTEGRATION =====
+        # Add visual elements
+        tweet_text = add_crypto_visual_elements(tweet_text)
         
-        has_emoji = learning_system.should_use_emoji()
-        if has_emoji:
-            tweet_text = add_visual_elements_to_tweet(tweet_text, category)
-        
-        has_cta = any(q in tweet_text for q in ["?", "What's", "How", "Which", "Who"])
-        
-        short_url = shorten_url_with_fallback(article["url"])
+        # Add URL
+        short_url = shorten_url(article["url"])
         full_tweet = f"{tweet_text}\n\n{short_url}"
-        full_tweet = optimize_hashtags_for_reach(full_tweet, category)
         
+        # Add hashtags
+        full_tweet = optimize_hashtags(full_tweet)
+        
+        # Extract hashtags for tracking
         hashtags = [word for word in full_tweet.split() if word.startswith('#')]
         
+        # Truncate if needed
         if len(full_tweet) > 280:
             full_tweet = full_tweet[:277] + "..."
         
+        # Determine engagement style
+        engagement_style = "standard"
+        if "?" in tweet_text:
+            engagement_style = "question"
+        elif any(phrase in tweet_text.lower() for phrase in ["hot take", "unpopular", "controversial"]):
+            engagement_style = "provocative"
+        elif any(phrase in tweet_text.lower() for phrase in ["here's how", "understanding", "breakdown"]):
+            engagement_style = "educational"
+        
+        # Post tweet
         max_retries = 3
         retry_delay = 5
         
@@ -1567,22 +649,18 @@ def post_main_content_with_learning(category):
                 log_posted(article["url"])
                 last_post_time = datetime.now(pytz.UTC)
                 
-                # ===== RECORD ENGAGEMENT BAIT STATUS =====
+                # Record for learning
+                current_time = datetime.now(pytz.UTC).strftime("%H:%M")
                 learning_system.record_tweet_posted(
                     tweet_id=tweet_id,
                     tweet_text=full_tweet,
-                    category=category,
+                    content_type=content_type,
                     time_slot=current_time,
                     hashtags=hashtags,
-                    has_emoji=has_emoji,
-                    has_cta=has_cta,
-                    is_engagement_bait=use_engagement_bait
+                    engagement_style=engagement_style
                 )
-                # ===== END RECORDING =====
                 
-                timing_type = "premium" if is_premium_posting_time() else "global" if is_global_posting_time() else "standard"
-                bait_marker = "🔥 BAIT" if use_engagement_bait else ""
-                write_log(f"✅ Posted {timing_type} content {bait_marker}: {article['title'][:50]}...")
+                write_log(f"✅ Posted {content_type} ({engagement_style}): {article['title'][:50]}...")
                 return True
                 
             except Exception as e:
@@ -1602,68 +680,49 @@ def post_main_content_with_learning(category):
                     write_log(f"All {max_retries} retry attempts failed: {e}")
                     return False
     
-    write_log(f"No new articles to post for {category}")
+    write_log(f"No new crypto articles to post")
     return False
 
 # =========================
-# SCHEDULER SYSTEM
+# SCHEDULER
 # =========================
 
-def should_post_main_content():
-    """Check if it's time for main content"""
+def should_post_now():
+    """Check if it's an optimal posting time"""
     current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in MAIN_POSTING_TIMES
+    return current_time in POSTING_TIMES
 
-def should_run_reply_campaign():
-    """Check if it's time for reply campaign"""
-    return False
-
-def run_main_content_job_with_learning():
-    """Enhanced main content job with learning and diagnostics"""
+def run_posting_job():
+    """Main posting job with learning"""
     try:
-        write_log("🚀 Starting strategic main content job with learning...")
+        write_log("🚀 Starting crypto posting job...")
         
+        # Run performance analysis if needed
         if learning_system.should_analyze_performance():
             write_log("🧠 Running performance analysis...")
             learning_system.analyze_performance()
         
-        category = detect_category_with_learning()
-        write_log(f"📂 Selected category: {category}")
+        # Post content
+        success = post_crypto_content()
         
-        articles = get_articles_for_category(category)
-        write_log(f"📰 Found {len(articles)} articles for {category}")
+        if not success and quota_manager.can_write(1):
+            write_log("Retrying with different content type...")
+            time.sleep(5)
+            post_crypto_content()
         
-        if os.path.exists(POSTED_LOG):
-            with open(POSTED_LOG, 'r') as f:
-                posted_count = len(f.readlines())
-            write_log(f"📝 Already posted: {posted_count} articles total")
-        
-        success = post_main_content_with_learning(category)
-        if not success:
-            categories = list(RSS_FEEDS.keys())
-            backup_categories = [cat for cat in categories if cat != category]
-            if backup_categories and quota_manager.can_write(1):
-                backup_category = learning_system.get_recommended_category(backup_categories)
-                write_log(f"Trying learning-recommended backup: {backup_category}")
-                post_main_content_with_learning(backup_category)
-        
-        write_log("✅ Strategic main content job with learning completed")
+        write_log("✅ Crypto posting job completed")
     except Exception as e:
-        write_log(f"Error in main content job: {e}")
+        write_log(f"Error in posting job: {e}")
 
-def start_learning_scheduler():
-    """Scheduler with integrated learning system and continuous heartbeat"""
-    write_log("🧠 Starting SELF-LEARNING scheduler with ENGAGEMENT BAIT...")
+def start_scheduler():
+    """Main scheduler with continuous monitoring"""
+    write_log("🚀 Starting CRYPTO-FOCUSED scheduler...")
     write_log("="*60)
-    write_log("Learning system: ACTIVE - Bot adapts based on performance data")
-    write_log(f"Performance analysis: Daily (when {learning_system.min_tweets_for_learning}+ tweets posted)")
-    write_log(f"Premium posting times: {PREMIUM_POSTING_TIMES}")
-    write_log(f"Global posting times: {GLOBAL_POSTING_TIMES}")
-    write_log(f"Business categories: {BUSINESS_CATEGORIES}")
-    write_log(f"Global categories: {GLOBAL_CATEGORIES}")
-    write_log("Visual elements: ACTIVE")
-    write_log("Engagement bait: ACTIVE (30% of posts)")
-    write_log("Continuous heartbeat: ACTIVE (5-minute intervals)")
+    write_log("Niche: CRYPTO ONLY")
+    write_log("Learning system: ACTIVE")
+    write_log(f"Posting times (UTC): {POSTING_TIMES}")
+    write_log(f"Content types: {CRYPTO_CONTENT_TYPES}")
+    write_log("Engagement strategy: Questions, Hot Takes, Contrarian Views")
     write_log("="*60)
     
     quota_status = quota_manager.get_quota_status()
@@ -1677,7 +736,7 @@ def start_learning_scheduler():
     
     last_checked_minute = None
     last_heartbeat = datetime.now(pytz.UTC)
-    heartbeat_interval = 300
+    heartbeat_interval = 300  # 5 minutes
     loop_count = 0
     
     while True:
@@ -1686,6 +745,7 @@ def start_learning_scheduler():
             current_minute = current_time.strftime("%H:%M")
             loop_count += 1
             
+            # Heartbeat
             if (current_time - last_heartbeat).total_seconds() >= heartbeat_interval:
                 quota_status = quota_manager.get_quota_status()
                 write_log(f"💓 HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | "
@@ -1694,16 +754,13 @@ def start_learning_scheduler():
                          f"Analyzed: {learning_system.performance_data['total_analyzed']} tweets")
                 last_heartbeat = current_time
             
+            # Check for posting time
             if current_minute != last_checked_minute:
                 write_log(f"🕐 Time check: {current_minute} UTC (Loop #{loop_count})")
                 
-                if should_post_main_content():
-                    timing_type = "PREMIUM" if is_premium_posting_time() else "GLOBAL" if is_global_posting_time() else "STANDARD"
-                    write_log(f"⏰ {timing_type} content time: {current_minute}")
-                    run_main_content_job_with_learning()
-
-                if should_run_reply_campaign():
-                    write_log(f"⏰ Reply campaign time: {current_minute}")
+                if should_post_now():
+                    write_log(f"⏰ Posting time: {current_minute}")
+                    run_posting_job()
                 
                 last_checked_minute = current_minute
             
@@ -1730,17 +787,15 @@ class HealthHandler(BaseHTTPRequestHandler):
         quota_status = quota_manager.get_quota_status()
         learning_status = learning_system.performance_data
         
-        status = f"""Self-Learning Twitter Bot with ENGAGEMENT BAIT: RUNNING
+        status = f"""Crypto-Focused Twitter Bot: RUNNING
 
 === MONTHLY QUOTA ===
 Reads: {quota_status['reads_used']}/100 ({quota_status['reads_remaining']} remaining)
 Writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)
 
 === DAILY ALLOCATION ===
-Main Posts: 12/day (360/month)
-- Regular Posts: ~8/day (240/month)
-- Engagement Bait: ~4/day (120/month) 🔥
-Emergency Buffer: 140/month
+Posts: ~15/day (450/month)
+Emergency Buffer: 50/month
 
 === LEARNING SYSTEM ===
 Status: ACTIVE
@@ -1750,39 +805,41 @@ Pending Analysis: {len([t for t in learning_status['tweets'] if not t['analyzed'
 
 === LEARNING INSIGHTS ==="""
 
-        if learning_system.insights.get("category_performance"):
-            sorted_cats = sorted(
-                learning_system.insights["category_performance"].items(),
+        if learning_system.insights.get("content_type_performance"):
+            sorted_types = sorted(
+                learning_system.insights["content_type_performance"].items(),
                 key=lambda x: x[1]["avg_engagement"],
                 reverse=True
             )
-            status += f"\nTop Category: {sorted_cats[0][0]} (avg: {sorted_cats[0][1]['avg_engagement']:.2f})"
+            if sorted_types:
+                status += f"\nTop Content Type: {sorted_types[0][0]} (avg: {sorted_types[0][1]['avg_engagement']:.2f})"
         
-        if learning_system.insights.get("emoji_impact"):
-            improvement = learning_system.insights["emoji_impact"]["improvement_factor"]
-            status += f"\nEmoji Impact: {improvement:.2f}x boost"
-        
-        if learning_system.insights.get("cta_effectiveness"):
-            improvement = learning_system.insights["cta_effectiveness"]["improvement_factor"]
-            status += f"\nCTA Impact: {improvement:.2f}x boost"
-        
-        if learning_system.insights.get("engagement_bait_effectiveness"):
-            improvement = learning_system.insights["engagement_bait_effectiveness"]["improvement_factor"]
-            bait_count = learning_system.insights["engagement_bait_effectiveness"]["bait_count"]
-            status += f"\n🔥 Engagement Bait: {improvement:.2f}x boost ({bait_count} tested)"
+        if learning_system.insights.get("engagement_style_scores"):
+            sorted_styles = sorted(
+                learning_system.insights["engagement_style_scores"].items(),
+                key=lambda x: x[1]["avg_engagement"],
+                reverse=True
+            )
+            if sorted_styles:
+                status += f"\nTop Engagement Style: {sorted_styles[0][0]} (avg: {sorted_styles[0][1]['avg_engagement']:.2f})"
 
         status += f"""
 
-=== ENHANCED FEATURES ===
-✓ Self-Learning Analytics
-✓ Performance-Based Optimization
-✓ Visual Elements with Smart Emojis
-✓ Contextual CTAs
-✓ 🔥 ENGAGEMENT BAIT (30% of posts)
-✓ Dynamic Example Openers
-✓ Premium Targeting
-✓ Strategic Timing
-✓ Smart Quota Management
+=== CRYPTO FEATURES ===
+✓ Multi-format content (questions, hot takes, analysis)
+✓ Engagement-optimized posting times (US + Asia)
+✓ Self-learning content optimization
+✓ Performance tracking & adaptation
+✓ Smart hashtag optimization
+✓ Crypto-specific emojis
+
+=== CONTENT TYPES ===
+• Questions (drive replies)
+• Hot Takes (spark debate)
+• Contrarian Views (challenge thinking)
+• Educational (build authority)
+• Market Analysis (timely insights)
+• Breakdowns/Lists (saves & shares)
 
 Last Post: {last_post_time or 'Never'}
 """
@@ -1821,41 +878,34 @@ def test_auth():
         write_log(f"❌ Authentication failed: {e}")
         return False
 
-def test_learning_system():
-    """Test learning system functionality"""
-    write_log("Testing learning system...")
+def test_content_generation():
+    """Test crypto content generation"""
+    write_log("Testing content generation...")
     
-    if os.path.exists(learning_system.performance_db):
-        write_log(f"✓ Performance DB found: {len(learning_system.performance_data['tweets'])} tweets recorded")
-    else:
-        write_log("○ Performance DB not found (will be created on first post)")
+    test_title = "Bitcoin surges past $50K as institutional adoption accelerates"
     
-    if os.path.exists(learning_system.learning_insights):
-        write_log(f"✓ Learning insights found")
-    else:
-        write_log("○ Learning insights not found (will be created after first analysis)")
-    
-    if learning_system.performance_data["total_analyzed"] >= learning_system.min_tweets_for_learning:
-        write_log(f"✓ Sufficient data for learning: {learning_system.performance_data['total_analyzed']} tweets analyzed")
-        learning_system._log_key_insights()
-    else:
-        write_log(f"○ Gathering initial data: {learning_system.performance_data['total_analyzed']}/{learning_system.min_tweets_for_learning} tweets analyzed")
+    for content_type in CRYPTO_CONTENT_TYPES:
+        try:
+            content = generate_crypto_content(test_title, content_type)
+            write_log(f"✓ {content_type}: {content[:60]}...")
+        except Exception as e:
+            write_log(f"✗ {content_type}: {e}")
     
     return True
 
-def test_engagement_bait():
-    """Test engagement bait generation"""
-    write_log("Testing engagement bait system...")
-    
-    test_categories = ["EPL", "F1", "Crypto"]
-    for category in test_categories:
-        if category in ENGAGEMENT_BAIT_PATTERNS:
-            write_log(f"✓ {category}: Engagement bait patterns loaded")
-        else:
-            write_log(f"✗ {category}: Missing engagement bait patterns")
-    
-    write_log(f"✓ Engagement bait probability: 30% ({should_use_engagement_bait.__doc__})")
-    return True
+def validate_env_vars():
+    """Validate required environment variables"""
+    required_vars = [
+        "OPENAI_API_KEY", 
+        "TWITTER_API_KEY", 
+        "TWITTER_API_SECRET", 
+        "TWITTER_ACCESS_TOKEN", 
+        "TWITTER_ACCESS_SECRET"
+    ]
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        write_log(f"Missing environment variables: {', '.join(missing)}", level="error")
+        raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
 
 # =========================
 # MAIN EXECUTION
@@ -1863,7 +913,7 @@ def test_engagement_bait():
 
 if __name__ == "__main__":
     write_log("="*60)
-    write_log("🧠 SELF-LEARNING TWITTER BOT WITH ENGAGEMENT BAIT STARTUP")
+    write_log("🚀 CRYPTO-FOCUSED TWITTER BOT STARTUP")
     write_log("="*60)
     
     try:
@@ -1877,8 +927,7 @@ if __name__ == "__main__":
         write_log("CRITICAL: Authentication failed. Bot cannot run.")
         exit(1)
     
-    test_learning_system()
-    test_engagement_bait()
+    test_content_generation()
     
     quota_status = quota_manager.get_quota_status()
     write_log("")
@@ -1887,60 +936,28 @@ if __name__ == "__main__":
     write_log(f"Monthly writes: {quota_status['writes_used']}/500 ({quota_status['writes_remaining']} remaining)")
     
     write_log("")
-    write_log("=== SELF-LEARNING FEATURES ===")
-    write_log("✓ Performance tracking for all tweets")
-    write_log("✓ Daily analysis of tweet engagement")
-    write_log("✓ Category performance learning")
-    write_log("✓ Time slot optimization")
-    write_log("✓ Hashtag effectiveness analysis")
-    write_log("✓ Emoji and CTA impact measurement")
-    write_log("✓ 🔥 Engagement bait effectiveness tracking")
-    write_log("✓ Adaptive content strategy")
-    write_log("✓ Best practices identification")
+    write_log("=== CRYPTO SPECIALIZATION ===")
+    write_log("✓ 100% crypto-focused content")
+    write_log("✓ 6 high-engagement content formats")
+    write_log("✓ Optimized for US + Asian crypto markets")
+    write_log("✓ Questions drive replies")
+    write_log("✓ Hot takes spark debate")
+    write_log("✓ Educational builds authority")
+    write_log("✓ Market analysis provides value")
     
     write_log("")
-    write_log("=== POSTING STRATEGY ===")
-    write_log("✓ Main posts: 12/day with learning optimization")
-    write_log("✓ 🔥 Engagement bait: ~4/day (30% of posts)")
-    write_log("✓ Visual elements with smart emojis")
-    write_log("✓ Contextual CTAs based on content")
-    write_log("✓ Premium targeting for business categories")
-    write_log("✓ Global timing for sports/entertainment")
-    write_log("✓ Strategic category selection based on performance")
-    write_log("✓ Time slot filtering (skip underperforming times)")
+    write_log("=== ENGAGEMENT STRATEGY ===")
+    write_log("📊 Content mix:")
+    write_log("   • 30% Questions (replies)")
+    write_log("   • 25% Hot Takes (debate)")
+    write_log("   • 20% Educational (saves)")
+    write_log("   • 15% Market Analysis (shares)")
+    write_log("   • 10% Contrarian (controversy)")
     
     write_log("")
-    write_log("=== ENGAGEMENT BAIT SYSTEM ===")
-    write_log("🔥 Controversial takes: 'Unpopular opinion:', 'Hot take:', etc.")
-    write_log("🔥 Debate starters: Force people to pick sides")
-    write_log("🔥 Comparisons: 'X vs Y' style posts")
-    write_log("🔥 Expected impact: 2-3x higher engagement")
-    write_log("🔥 Categories covered: EPL, F1, Crypto, Tesla, Space, Cycling, MotoGP")
-    
-    write_log("")
-    write_log("=== LEARNING INSIGHTS ===")
-    if learning_system.performance_data["total_analyzed"] > 0:
-        write_log(f"📊 Total tweets analyzed: {learning_system.performance_data['total_analyzed']}")
-        write_log(f"📅 Last analysis: {learning_system.performance_data['last_analysis']}")
-        
-        if learning_system.insights["best_practices"]:
-            write_log("📈 Best practices identified:")
-            for practice in learning_system.insights["best_practices"]:
-                write_log(f"   • {practice}")
-        
-        if learning_system.insights["avoid_patterns"]:
-            write_log("⚠️  Patterns to avoid:")
-            for pattern in learning_system.insights["avoid_patterns"]:
-                write_log(f"   • {pattern}")
-    else:
-        write_log("📊 Learning mode: Data collection phase")
-        write_log(f"   Need {learning_system.min_tweets_for_learning} tweets before optimization begins")
-    
-    write_log("")
-    write_log("=== QUOTA EFFICIENCY ===")
-    write_log("• Read usage: 1 call/day for performance analysis (30/month)")
-    write_log("• Write usage: 12 posts/day (360/month)")
-    write_log("• Buffer: 70 reads + 140 writes reserved")
+    write_log("=== POSTING TIMES (UTC) ===")
+    for time_slot in POSTING_TIMES:
+        write_log(f"   • {time_slot}")
     
     write_log("")
     write_log("Starting health check server...")
@@ -1949,12 +966,12 @@ if __name__ == "__main__":
     
     write_log("")
     write_log("="*60)
-    write_log("🚀 STARTING SELF-LEARNING SCHEDULER WITH ENGAGEMENT BAIT")
+    write_log("🚀 STARTING CRYPTO SCHEDULER")
     write_log("="*60)
     write_log("")
     
     try:
-        start_learning_scheduler()
+        start_scheduler()
     except KeyboardInterrupt:
         write_log("")
         write_log("="*60)
