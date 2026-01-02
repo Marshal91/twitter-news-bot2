@@ -1,9 +1,4 @@
 """
-Crypto-Exclusive Bot with High-Engagement Strategies
-Enhanced with crypto-specific engagement tactics
-FIXED VERSION - All syntax errors resolved
-"""
-
 import os
 import random
 import requests
@@ -12,68 +7,61 @@ import tweepy
 import time
 import json
 import hashlib
+import sqlite3
+import re
 from datetime import datetime, timedelta
 import pytz
-from newspaper import Article, Config
 from openai import OpenAI
 from dotenv import load_dotenv
 import logging
 from logging.handlers import RotatingFileHandler
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from contextlib import contextmanager
+from typing import List, Dict, Tuple, Optional
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from enum import Enum
+from difflib import SequenceMatcher
+from urllib.parse import urlparse, quote
 
-# Load environment variables
-try:
-    if os.path.exists('.env'):
-        load_dotenv()
-        print("INFO: .env file loaded successfully")
-    else:
-        print("INFO: No .env file found, using system environment variables")
-except Exception as e:
-    print(f"INFO: Could not load .env file: {e}")
+# ═══════════════════════════════════════════════════════════════════════════
+# ENVIRONMENT & CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
 
-# =========================
-# CONFIGURATION
-# =========================
+load_dotenv()
 
+# API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
 TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+BITLY_TOKEN = os.getenv("BITLY_TOKEN")  # Optional
 
-# FILE PATHS
-POSTED_LOG = "posted_urls.txt"
-CONTENT_HASHES_FILE = "content_hashes.txt"
-LOG_FILE = "bot_log.txt"
+# Database
+DATABASE_PATH = "crypto_bot_data.db"
 
-# POSTING CONFIGURATION
+# Posting Configuration
 DAILY_POST_LIMIT = 15
 POST_INTERVAL_MINUTES = 90
 last_post_time = None
-FRESHNESS_WINDOW = timedelta(hours=24)
-
-# DAILY POST TRACKING
 daily_posts = 0
 last_reset_date = datetime.now(pytz.UTC).date()
 
-# CONTENT VARIETY TRACKING
-recent_content_types = []
-MAX_RECENT_TYPES = 5
-
-# CRYPTO-OPTIMIZED POSTING TIMES (US + Asian markets)
+# Posting Schedule (UTC)
 POSTING_TIMES = [
     "03:00", "05:00", "07:00", "09:00", "11:00", "13:00",
     "15:00", "17:00", "19:00", "21:00", "23:00", "01:00"
 ]
 
-# CRYPTO CONTENT TYPES
+# Content Types
 CRYPTO_CONTENT_TYPES = [
     "educational", "market_analysis", "contrarian",
     "question", "hot_take", "breakdown"
 ]
 
-# CRYPTO RSS FEEDS
+# RSS Feeds
 RSS_FEEDS = [
     "https://cointelegraph.com/rss",
     "https://www.coindesk.com/arc/outboundfeeds/rss/",
@@ -82,86 +70,33 @@ RSS_FEEDS = [
     "https://bitcoinmagazine.com/.rss/full/"
 ]
 
-# CRYPTO HASHTAGS
-CRYPTO_HASHTAGS = {
-    "primary": ["#Crypto", "#Bitcoin", "#Ethereum", "#BTC", "#ETH"],
-    "trending": ["#CryptoNews", "#Blockchain", "#DeFi", "#Web3", "#Altcoins"],
-    "specific": ["#Solana", "#Cardano", "#Polygon", "#BNB", "#XRP"]
-}
+# Duplicate Detection Threshold
+SIMILARITY_THRESHOLD = 0.75  # 75% similarity = duplicate
 
-# ENGAGEMENT TEMPLATES
-CRYPTO_ENGAGEMENT_TEMPLATES = {
-    "question": [
-        "Which would you choose: {option1} or {option2}?",
-        "Quick poll: {option1} vs {option2}?",
-        "Honest question: {option1} or {option2}?",
-        "You can only pick one: {option1} or {option2}. Which is it?",
-        "{question} Drop your answer below"
-    ],
-    "hot_take": [
-        "Unpopular opinion: {statement}",
-        "Hot take: {statement}",
-        "Controversial but true: {statement}",
-        "Nobody wants to hear this but {statement}",
-        "Real talk: {statement}"
-    ],
-    "contrarian": [
-        "Everyone's wrong about {topic}. Here's why:",
-        "The truth about {topic} that nobody talks about:",
-        "Why {mainstream_belief} is actually backwards:",
-        "Unpopular opinion: {topic} is completely misunderstood",
-        "Let's be honest about {topic}:"
-    ],
-    "educational": [
-        "Here's how {concept} actually works:",
-        "Understanding {concept} in simple terms:",
-        "{concept} explained (no BS):",
-        "Quick breakdown: {concept}",
-        "What you need to know about {concept}:"
-    ],
-    "market_analysis": [
-        "Why {coin} is {movement} today:",
-        "What's really driving {coin}'s {movement}:",
-        "The real reason behind {coin}'s {movement}:",
-        "{coin} {movement} - here's what's happening:",
-        "Breaking down {coin}'s {movement}:"
-    ],
-    "breakdown": [
-        "5 things about {topic} you need to know:",
-        "3 reasons why {topic} matters:",
-        "The top {number} signs of {topic}:",
-        "{number} facts about {topic} that will surprise you:",
-        "Here are {number} things everyone gets wrong about {topic}:"
+# ═══════════════════════════════════════════════════════════════════════════
+# LOGGING SETUP
+# ═══════════════════════════════════════════════════════════════════════════
+
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s: %(message)s",
+    handlers=[
+        RotatingFileHandler('logs/bot_activity.log', maxBytes=10*1024*1024, backupCount=5),
+        logging.StreamHandler()
     ]
-}
+)
 
-CRYPTO_QUESTION_TEMPLATES = [
-    "Bitcoin or Ethereum for the next 5 years?",
-    "DeFi or CeFi - which is the future?",
-    "Would you rather: 10 BTC in 2010 or $10M cash today?",
-    "Bull market or bear market - which teaches you more?",
-    "Holding or trading - which makes you more money?",
-    "Layer 1 or Layer 2 - where's the real opportunity?",
-    "Staking or lending - which is better for passive income?",
-    "Privacy coins: necessary innovation or regulatory nightmare?"
-]
+logger = logging.getLogger(__name__)
 
-CRYPTO_HOT_TAKES = [
-    "Most crypto investors are just gamblers with better vocabulary",
-    "The next bull run will look nothing like the last one",
-    "NFTs solved a real problem, people just hate the art",
-    "Regulation will make crypto bigger, not smaller",
-    "99% of altcoins will go to zero",
-    "The real crypto wealth is made in bear markets",
-    "Technical analysis in crypto is modern astrology"
-]
+# ═══════════════════════════════════════════════════════════════════════════
+# INITIALIZE APIS
+# ═══════════════════════════════════════════════════════════════════════════
 
-CRYPTO_EMOJIS = ["₿", "💎", "🚀", "📊", "📈", "📉", "⚡", "🔥", "💰", "🎯"]
-
-# Initialize OpenAI client
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Initialize Twitter API
 auth = tweepy.OAuth1UserHandler(
     TWITTER_API_KEY, TWITTER_API_SECRET,
     TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
@@ -174,468 +109,1042 @@ twitter_client = tweepy.Client(
     access_token_secret=TWITTER_ACCESS_SECRET
 )
 
-# =========================
-# LOGGING
-# =========================
+# ═══════════════════════════════════════════════════════════════════════════
+# DATABASE MANAGER
+# ═══════════════════════════════════════════════════════════════════════════
 
-if not os.path.exists('logs'):
-    os.makedirs('logs')
+class DatabaseManager:
+    """Manages all database operations"""
+    
+    def __init__(self, db_path=DATABASE_PATH):
+        self.db_path = db_path
+        self.init_database()
+    
+    @contextmanager
+    def get_connection(self):
+        """Context manager for database connections"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Database error: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def init_database(self):
+        """Initialize all database tables"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            
+            # Posts table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS posts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tweet_id TEXT UNIQUE NOT NULL,
+                    url TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    tweet_text TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    hashtags TEXT,
+                    posted_at TIMESTAMP NOT NULL,
+                    likes INTEGER DEFAULT 0,
+                    retweets INTEGER DEFAULT 0,
+                    replies INTEGER DEFAULT 0,
+                    impressions INTEGER DEFAULT 0,
+                    engagement_rate REAL DEFAULT 0.0,
+                    last_updated TIMESTAMP
+                )
+            ''')
+            
+            # Content hashes table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS content_hashes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    content_hash TEXT UNIQUE NOT NULL,
+                    created_at TIMESTAMP NOT NULL,
+                    tweet_id TEXT,
+                    FOREIGN KEY (tweet_id) REFERENCES posts(tweet_id)
+                )
+            ''')
+            
+            # A/B Testing table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS ab_tests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    experiment_name TEXT NOT NULL,
+                    variant TEXT NOT NULL,
+                    tweet_id TEXT NOT NULL,
+                    posted_at TIMESTAMP NOT NULL,
+                    engagement_score REAL DEFAULT 0.0,
+                    is_control BOOLEAN DEFAULT 0,
+                    metadata TEXT,
+                    FOREIGN KEY (tweet_id) REFERENCES posts(tweet_id)
+                )
+            ''')
+            
+            # Hashtag performance table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS hashtag_performance (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hashtag TEXT NOT NULL,
+                    uses_count INTEGER DEFAULT 0,
+                    total_engagement INTEGER DEFAULT 0,
+                    avg_engagement REAL DEFAULT 0.0,
+                    last_used TIMESTAMP,
+                    performance_score REAL DEFAULT 0.0
+                )
+            ''')
+            
+            # RSS sources table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS rss_sources (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT UNIQUE NOT NULL,
+                    feed_name TEXT,
+                    last_fetched TIMESTAMP,
+                    success_count INTEGER DEFAULT 0,
+                    failure_count INTEGER DEFAULT 0,
+                    success_rate REAL DEFAULT 1.0,
+                    is_active BOOLEAN DEFAULT 1
+                )
+            ''')
+            
+            # Create indexes
+            c.execute('CREATE INDEX IF NOT EXISTS idx_posts_posted_at ON posts(posted_at)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_posts_content_type ON posts(content_type)')
+            
+            logger.info("✅ Database initialized")
+    
+    def log_post(self, tweet_id, url, content_hash, tweet_text, content_type, hashtags):
+        """Log a new post"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now(pytz.UTC)
+            hashtag_str = json.dumps(hashtags) if hashtags else None
+            
+            c.execute('''
+                INSERT INTO posts (tweet_id, url, content_hash, tweet_text, 
+                                 content_type, hashtags, posted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (tweet_id, url, content_hash, tweet_text, content_type, hashtag_str, now))
+    
+    def has_been_posted(self, url):
+        """Check if URL has been posted"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            c.execute('SELECT COUNT(*) FROM posts WHERE url = ?', (url,))
+            return c.fetchone()[0] > 0
+    
+    def is_similar_content(self, content_hash, days=7):
+        """Check if similar content was posted recently"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            cutoff = datetime.now(pytz.UTC) - timedelta(days=days)
+            c.execute('''
+                SELECT COUNT(*) FROM content_hashes 
+                WHERE content_hash = ? AND created_at > ?
+            ''', (content_hash, cutoff))
+            return c.fetchone()[0] > 0
+    
+    def log_content_hash(self, content_hash, tweet_id=None):
+        """Log content hash"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now(pytz.UTC)
+            try:
+                c.execute('''
+                    INSERT INTO content_hashes (content_hash, created_at, tweet_id)
+                    VALUES (?, ?, ?)
+                ''', (content_hash, now, tweet_id))
+            except sqlite3.IntegrityError:
+                pass
+    
+    def get_recent_posts(self, limit=50):
+        """Get recent posts"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT tweet_id, tweet_text, content_type, posted_at,
+                       likes, retweets, replies, engagement_rate
+                FROM posts
+                ORDER BY posted_at DESC
+                LIMIT ?
+            ''', (limit,))
+            
+            results = []
+            for row in c.fetchall():
+                results.append({
+                    'tweet_id': row[0],
+                    'tweet_text': row[1],
+                    'content_type': row[2],
+                    'posted_at': row[3],
+                    'likes': row[4],
+                    'retweets': row[5],
+                    'replies': row[6],
+                    'engagement_rate': row[7]
+                })
+            return results
+    
+    def get_content_type_performance(self, days=30):
+        """Get performance by content type"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            cutoff = datetime.now(pytz.UTC) - timedelta(days=days)
+            
+            c.execute('''
+                SELECT 
+                    content_type,
+                    COUNT(*) as post_count,
+                    AVG(likes) as avg_likes,
+                    AVG(retweets) as avg_retweets,
+                    AVG(engagement_rate) as avg_engagement_rate
+                FROM posts
+                WHERE posted_at > ? AND engagement_rate > 0
+                GROUP BY content_type
+                ORDER BY avg_engagement_rate DESC
+            ''', (cutoff,))
+            
+            results = []
+            for row in c.fetchall():
+                results.append({
+                    'content_type': row[0],
+                    'post_count': row[1],
+                    'avg_likes': round(row[2], 2),
+                    'avg_retweets': round(row[3], 2),
+                    'avg_engagement_rate': round(row[4], 2)
+                })
+            return results
+    
+    def log_ab_test(self, experiment_name, variant, tweet_id, is_control=False):
+        """Log A/B test variant"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now(pytz.UTC)
+            
+            c.execute('''
+                INSERT INTO ab_tests (experiment_name, variant, tweet_id, posted_at, is_control)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (experiment_name, variant, tweet_id, now, is_control))
+    
+    def update_hashtag_performance(self, hashtags, engagement):
+        """Update hashtag performance"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now(pytz.UTC)
+            
+            for hashtag in hashtags:
+                c.execute('SELECT uses_count, total_engagement FROM hashtag_performance WHERE hashtag = ?', (hashtag,))
+                result = c.fetchone()
+                
+                if result:
+                    new_uses = result[0] + 1
+                    new_total = result[1] + engagement
+                    new_avg = new_total / new_uses
+                    
+                    c.execute('''
+                        UPDATE hashtag_performance 
+                        SET uses_count = ?, total_engagement = ?, 
+                            avg_engagement = ?, last_used = ?, performance_score = ?
+                        WHERE hashtag = ?
+                    ''', (new_uses, new_total, new_avg, now, new_avg, hashtag))
+                else:
+                    c.execute('''
+                        INSERT INTO hashtag_performance 
+                        (hashtag, uses_count, total_engagement, avg_engagement, last_used, performance_score)
+                        VALUES (?, 1, ?, ?, ?, ?)
+                    ''', (hashtag, engagement, engagement, now, engagement))
+    
+    def get_top_hashtags(self, limit=10):
+        """Get top performing hashtags"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT hashtag, uses_count, avg_engagement, performance_score
+                FROM hashtag_performance
+                WHERE uses_count >= 2
+                ORDER BY performance_score DESC
+                LIMIT ?
+            ''', (limit,))
+            
+            results = []
+            for row in c.fetchall():
+                results.append({
+                    'hashtag': row[0],
+                    'uses_count': row[1],
+                    'avg_engagement': round(row[2], 2),
+                    'performance_score': round(row[3], 2)
+                })
+            return results
+    
+    def update_rss_source(self, url, feed_name, success=True):
+        """Update RSS source statistics"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now(pytz.UTC)
+            
+            c.execute('SELECT success_count, failure_count FROM rss_sources WHERE url = ?', (url,))
+            result = c.fetchone()
+            
+            if result:
+                success_count = result[0] + (1 if success else 0)
+                failure_count = result[1] + (0 if success else 1)
+                total = success_count + failure_count
+                success_rate = success_count / total if total > 0 else 1.0
+                
+                c.execute('''
+                    UPDATE rss_sources 
+                    SET last_fetched = ?, success_count = ?, failure_count = ?, success_rate = ?
+                    WHERE url = ?
+                ''', (now, success_count, failure_count, success_rate, url))
+            else:
+                c.execute('''
+                    INSERT INTO rss_sources (url, feed_name, last_fetched, 
+                                           success_count, failure_count, success_rate)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (url, feed_name, now, 
+                     1 if success else 0, 
+                     0 if success else 1, 
+                     1.0 if success else 0.0))
+    
+    def get_daily_post_count(self, date=None):
+        """Get number of posts for a date"""
+        if date is None:
+            date = datetime.now(pytz.UTC).date()
+        
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            c.execute('SELECT COUNT(*) FROM posts WHERE DATE(posted_at) = ?', (date,))
+            return c.fetchone()[0]
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s: %(message)s",
-    handlers=[
-        RotatingFileHandler('logs/bot_activity.log', maxBytes=10*1024*1024, backupCount=5),
-        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),
-        logging.StreamHandler()
-    ]
-)
+# ═══════════════════════════════════════════════════════════════════════════
+# FUZZY DUPLICATE DETECTOR
+# ═══════════════════════════════════════════════════════════════════════════
 
-def write_log(message, level="info"):
-    if level == "error":
-        logging.error(message)
-    else:
-        logging.info(message)
+class DuplicateDetector:
+    """Advanced duplicate detection using fuzzy matching"""
+    
+    def __init__(self, db_manager, similarity_threshold=SIMILARITY_THRESHOLD):
+        self.db = db_manager
+        self.similarity_threshold = similarity_threshold
+    
+    def get_exact_hash(self, text):
+        """Get MD5 hash for exact duplicate detection"""
+        normalized = self._normalize_text(text)
+        return hashlib.md5(normalized.encode()).hexdigest()
+    
+    def _normalize_text(self, text):
+        """Normalize text for comparison"""
+        text = text.lower()
+        text = re.sub(r'http\S+|www.\S+', '', text)  # Remove URLs
+        text = re.sub(r'#\w+', '', text)  # Remove hashtags
+        text = re.sub(r'@\w+', '', text)  # Remove mentions
+        text = ' '.join(text.split())  # Normalize whitespace
+        return text.strip()
+    
+    def _tokenize(self, text):
+        """Tokenize text into words"""
+        normalized = self._normalize_text(text)
+        cleaned = re.sub(r'[^\w\s]', '', normalized)
+        words = cleaned.split()
+        return [w for w in words if len(w) > 2]
+    
+    def levenshtein_similarity(self, text1, text2):
+        """Calculate character-level similarity"""
+        text1_norm = self._normalize_text(text1)
+        text2_norm = self._normalize_text(text2)
+        return SequenceMatcher(None, text1_norm, text2_norm).ratio()
+    
+    def jaccard_similarity(self, text1, text2):
+        """Calculate word-level similarity"""
+        words1 = set(self._tokenize(text1))
+        words2 = set(self._tokenize(text2))
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        return len(intersection) / len(union) if union else 0.0
+    
+    def cosine_similarity(self, text1, text2):
+        """Calculate TF-IDF style similarity"""
+        words1 = self._tokenize(text1)
+        words2 = self._tokenize(text2)
+        
+        counter1 = Counter(words1)
+        counter2 = Counter(words2)
+        
+        all_words = set(counter1.keys()).union(set(counter2.keys()))
+        
+        if not all_words:
+            return 0.0
+        
+        vec1 = [counter1.get(word, 0) for word in all_words]
+        vec2 = [counter2.get(word, 0) for word in all_words]
+        
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        magnitude1 = sum(a * a for a in vec1) ** 0.5
+        magnitude2 = sum(b * b for b in vec2) ** 0.5
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+        
+        return dot_product / (magnitude1 * magnitude2)
+    
+    def combined_similarity(self, text1, text2):
+        """Combine multiple algorithms"""
+        lev = self.levenshtein_similarity(text1, text2)
+        jac = self.jaccard_similarity(text1, text2)
+        cos = self.cosine_similarity(text1, text2)
+        
+        # Weighted average
+        return (lev * 0.3) + (jac * 0.35) + (cos * 0.35)
+    
+    def is_duplicate(self, text, days=7):
+        """Check if text is a duplicate"""
+        # Exact hash check
+        exact_hash = self.get_exact_hash(text)
+        if self.db.is_similar_content(exact_hash, days):
+            return True, {'method': 'exact', 'similarity': 1.0}
+        
+        # Fuzzy similarity check
+        recent_posts = self.db.get_recent_posts(limit=50)
+        cutoff = datetime.now(pytz.UTC) - timedelta(days=days)
+        
+        for post in recent_posts:
+            posted_at = datetime.fromisoformat(post['posted_at'].replace('Z', '+00:00'))
+            if posted_at < cutoff:
+                continue
+            
+            similarity = self.combined_similarity(text, post.get('tweet_text', ''))
+            
+            if similarity >= self.similarity_threshold:
+                return True, {
+                    'method': 'fuzzy',
+                    'similarity': round(similarity, 3),
+                    'tweet_id': post['tweet_id']
+                }
+        
+        return False, None
 
-# =========================
-# CONTENT TRACKING FUNCTIONS
-# =========================
+# ═══════════════════════════════════════════════════════════════════════════
+# URL MANAGER
+# ═══════════════════════════════════════════════════════════════════════════
 
-def get_content_hash(text):
-    return hashlib.md5(text.lower().encode()).hexdigest()
+class URLManager:
+    """Manages URL shortening with multiple services"""
+    
+    def __init__(self, bitly_token=None, preferred_service='native'):
+        self.bitly_token = bitly_token
+        self.preferred_service = preferred_service
+        self.url_cache = {}
+    
+    def is_valid_url(self, url):
+        """Validate URL format"""
+        if not url or not url.startswith(('http://', 'https://')):
+            return False
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except:
+            return False
+    
+    def sanitize_url(self, url):
+        """Clean URL"""
+        return url.strip()
+    
+    def shorten_url(self, long_url):
+        """Shorten URL with fallback"""
+        if not self.is_valid_url(long_url):
+            return long_url
+        
+        # Use Twitter's native shortening (recommended)
+        if self.preferred_service == 'native':
+            return long_url
+        
+        # Try Bitly
+        if self.bitly_token:
+            try:
+                response = requests.post(
+                    'https://api-ssl.bitly.com/v4/shorten',
+                    headers={
+                        'Authorization': f'Bearer {self.bitly_token}',
+                        'Content-Type': 'application/json'
+                    },
+                    json={'long_url': long_url},
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    return response.json().get('link', long_url)
+            except:
+                pass
+        
+        # Try is.gd
+        try:
+            response = requests.get(
+                'https://is.gd/create.php',
+                params={'format': 'simple', 'url': long_url},
+                timeout=5
+            )
+            if response.status_code == 200 and response.text.startswith('http'):
+                return response.text.strip()
+        except:
+            pass
+        
+        # Fallback to original
+        return long_url
 
-def is_similar_content(tweet_text):
-    content_hash = get_content_hash(tweet_text)
-    if not os.path.exists(CONTENT_HASHES_FILE):
-        return False
+# ═══════════════════════════════════════════════════════════════════════════
+# RSS FEED MONITOR
+# ═══════════════════════════════════════════════════════════════════════════
+
+class FeedStatus(Enum):
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"
+    DEAD = "dead"
+
+@dataclass
+class FeedHealth:
+    url: str
+    name: str
+    status: FeedStatus
+    success_rate: float
+    consecutive_failures: int
+    last_check: datetime
+    error_message: Optional[str]
+
+class RSSFeedMonitor:
+    """Monitor RSS feed health"""
+    
+    def __init__(self, db_manager):
+        self.db = db_manager
+        self.feed_health = {}
+        self.max_failures = 5
+    
+    def validate_feed(self, feed_url):
+        """Validate a single feed"""
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(feed_url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            feed = feedparser.parse(response.content)
+            
+            if not feed.entries:
+                return False, "No entries"
+            
+            return True, {
+                'feed_name': feed.feed.get('title', 'Unknown'),
+                'entry_count': len(feed.entries)
+            }
+        except Exception as e:
+            return False, str(e)
+    
+    def validate_all_feeds(self, feed_urls):
+        """Validate all feeds"""
+        logger.info(f"Validating {len(feed_urls)} RSS feeds...")
+        
+        valid_count = 0
+        for feed_url in feed_urls:
+            is_valid, details = self.validate_feed(feed_url)
+            
+            if is_valid:
+                valid_count += 1
+                self.feed_health[feed_url] = FeedHealth(
+                    url=feed_url,
+                    name=details['feed_name'],
+                    status=FeedStatus.HEALTHY,
+                    success_rate=1.0,
+                    consecutive_failures=0,
+                    last_check=datetime.now(pytz.UTC),
+                    error_message=None
+                )
+                logger.info(f"✅ {details['feed_name']}: {details['entry_count']} entries")
+            else:
+                self.feed_health[feed_url] = FeedHealth(
+                    url=feed_url,
+                    name='Unknown',
+                    status=FeedStatus.UNHEALTHY,
+                    success_rate=0.0,
+                    consecutive_failures=1,
+                    last_check=datetime.now(pytz.UTC),
+                    error_message=details
+                )
+                logger.warning(f"❌ {feed_url}: {details}")
+        
+        logger.info(f"Validation complete: {valid_count}/{len(feed_urls)} healthy")
+        return valid_count
+    
+    def should_use_feed(self, feed_url):
+        """Check if feed should be used"""
+        if feed_url not in self.feed_health:
+            return True
+        
+        health = self.feed_health[feed_url]
+        return health.status != FeedStatus.DEAD
+    
+    def update_feed_health(self, feed_url, success, error=None):
+        """Update feed health"""
+        if feed_url not in self.feed_health:
+            return
+        
+        health = self.feed_health[feed_url]
+        health.last_check = datetime.now(pytz.UTC)
+        
+        if success:
+            health.consecutive_failures = 0
+            health.success_rate = min(1.0, health.success_rate + 0.1)
+            health.status = FeedStatus.HEALTHY
+            health.error_message = None
+        else:
+            health.consecutive_failures += 1
+            health.success_rate = max(0.0, health.success_rate - 0.1)
+            health.error_message = error
+            
+            if health.consecutive_failures >= self.max_failures:
+                health.status = FeedStatus.DEAD
+            elif health.success_rate < 0.5:
+                health.status = FeedStatus.UNHEALTHY
+            elif health.success_rate < 0.7:
+                health.status = FeedStatus.DEGRADED
+    
+    def get_healthy_feeds(self):
+        """Get list of healthy feeds"""
+        return [url for url, health in self.feed_health.items() 
+                if health.status in [FeedStatus.HEALTHY, FeedStatus.DEGRADED]]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HASHTAG OPTIMIZER
+# ═══════════════════════════════════════════════════════════════════════════
+
+class HashtagOptimizer:
+    """Intelligent hashtag selection"""
+    
+    def __init__(self, db_manager):
+        self.db = db_manager
+        
+        self.hashtag_pools = {
+            'primary': ['#Bitcoin', '#BTC', '#Crypto', '#Ethereum', '#ETH'],
+            'trending': ['#CryptoNews', '#Blockchain', '#DeFi', '#Web3'],
+            'coins': ['#Solana', '#Cardano', '#Polygon', '#BNB', '#XRP']
+        }
+    
+    def select_hashtags(self, content, strategy='adaptive', content_type='educational'):
+        """Select hashtags based on strategy"""
+        
+        # Get top performers from database
+        top_hashtags = self.db.get_top_hashtags(limit=10)
+        top_tags = [h['hashtag'] for h in top_hashtags] if top_hashtags else []
+        
+        if strategy == 'adaptive' and top_tags:
+            # Use data-driven approach
+            selected = top_tags[:2]
+        elif strategy == 'aggressive':
+            # Maximum reach
+            selected = random.sample(self.hashtag_pools['primary'], 2)
+            selected.append(random.choice(self.hashtag_pools['trending']))
+        else:
+            # Balanced approach
+            selected = [random.choice(self.hashtag_pools['primary'])]
+            selected.append(random.choice(self.hashtag_pools['trending']))
+        
+        return selected[:2]  # Limit to 2 hashtags
+    
+    def optimize_tweet_with_hashtags(self, tweet_text, hashtags, max_length=280):
+        """Add hashtags to tweet"""
+        available_space = max_length - len(tweet_text) - 2
+        
+        hashtag_text = " " + " ".join(hashtags)
+        
+        if len(hashtag_text) <= available_space:
+            return tweet_text + "\n\n" + " ".join(hashtags), hashtags
+        
+        # Try with fewer hashtags
+        for i in range(len(hashtags), 0, -1):
+            subset = hashtags[:i]
+            hashtag_text = " " + " ".join(subset)
+            if len(hashtag_text) <= available_space:
+                return tweet_text + "\n\n" + " ".join(subset), subset
+        
+        return tweet_text, []
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A/B TESTING FRAMEWORK
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ABTestingFramework:
+    """Simple A/B testing for content variations"""
+    
+    def __init__(self, db_manager):
+        self.db = db_manager
+        
+        self.experiments = {
+            'emoji_placement': ['start', 'end', 'none'],
+            'hashtag_count': ['one', 'two'],
+            'content_length': ['short', 'medium']
+        }
+    
+    def select_variant(self, experiment_name):
+        """Select random variant"""
+        if experiment_name in self.experiments:
+            return random.choice(self.experiments[experiment_name])
+        return None
+    
+    def apply_emoji_variant(self, tweet, variant):
+        """Apply emoji variant"""
+        crypto_emojis = ["₿", "📊", "📈", "💎", "🚀"]
+        
+        if variant == 'start':
+            return f"{random.choice(crypto_emojis)} {tweet}"
+        elif variant == 'end':
+            return f"{tweet} {random.choice(crypto_emojis)}"
+        return tweet
+    
+    def generate_test_plan(self, base_content):
+        """Generate A/B test plan"""
+        plan = {}
+        for exp_name in self.experiments.keys():
+            plan[exp_name] = self.select_variant(exp_name)
+        return plan
+    
+    def apply_variants(self, content, test_plan):
+        """Apply all variants"""
+        modified = content
+        
+        # Apply emoji
+        if 'emoji_placement' in test_plan:
+            modified = self.apply_emoji_variant(modified, test_plan['emoji_placement'])
+        
+        return modified, test_plan
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CONTENT GENERATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+def generate_crypto_content(title, content_type):
+    """Generate content using GPT"""
+    templates = {
+        "question": lambda t: f"What's your take on: {t[:120]}?",
+        "hot_take": lambda t: f"Hot take: {t[:150]}",
+        "contrarian": lambda t: f"Everyone's wrong about {t[:80]}. Here's why:",
+        "educational": lambda t: f"Understanding {t[:100]}:",
+        "market_analysis": lambda t: f"Why {t[:120]} matters:",
+        "breakdown": lambda t: f"Breaking down {t[:100]}:"
+    }
+    
     try:
-        with open(CONTENT_HASHES_FILE, 'r') as f:
-            recent_hashes = f.read().splitlines()[-100:]
-        return content_hash in recent_hashes
+        prompt = f"Based on: {title}\n\nCreate a {content_type} crypto tweet. Under 180 chars."
+        
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": f"Create {content_type} crypto content."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=70,
+            temperature=0.8
+        )
+        
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        write_log(f"Error checking content similarity: {e}")
+        logger.warning(f"GPT failed: {e}, using template")
+        template = templates.get(content_type, templates["educational"])
+        return template(title)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RSS FEED FETCHING
+# ═══════════════════════════════════════════════════════════════════════════
+
+def fetch_crypto_articles(feed_monitor, feed_urls):
+    """Fetch articles from healthy feeds"""
+    articles = []
+    
+    for feed_url in feed_urls:
+        # Check if feed is healthy
+        if not feed_monitor.should_use_feed(feed_url):
+            logger.debug(f"Skipping unhealthy feed: {feed_url}")
+            continue
+        
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(feed_url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            feed = feedparser.parse(response.content)
+            
+            if feed.entries:
+                feed_monitor.update_feed_health(feed_url, success=True)
+                
+                for entry in feed.entries[:5]:
+                    articles.append({
+                        'title': entry.title,
+                        'url': entry.link,
+                        'source_feed': feed_url
+                    })
+            else:
+                feed_monitor.update_feed_health(feed_url, success=False, error='No entries')
+        
+        except Exception as e:
+            feed_monitor.update_feed_health(feed_url, success=False, error=str(e))
+            logger.warning(f"Error fetching {feed_url}: {e}")
+    
+    logger.info(f"Fetched {len(articles)} articles from feeds")
+    return articles
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN BOT CLASS
+# ═══════════════════════════════════════════════════════════════════════════
+
+class CompleteCryptoBot:
+    """Complete crypto bot with all enhancements"""
+    
+    def __init__(self):
+        logger.info("="*60)
+        logger.info("INITIALIZING COMPLETE CRYPTO BOT")
+        logger.info("="*60)
+        
+        # Initialize all systems
+        self.db = DatabaseManager()
+        self.duplicate_detector = DuplicateDetector(self.db)
+        self.url_manager = URLManager(bitly_token=BITLY_TOKEN, preferred_service='native')
+        self.feed_monitor = RSSFeedMonitor(self.db)
+        self.hashtag_optimizer = HashtagOptimizer(self.db)
+        self.ab_framework = ABTestingFramework(self.db)
+        
+        # Validate RSS feeds
+        logger.info("\nValidating RSS feeds...")
+        self.feed_monitor.validate_all_feeds(RSS_FEEDS)
+        
+        logger.info("\n✅ All systems initialized")
+        logger.info("="*60 + "\n")
+    
+    def should_post_content(self, content, url):
+        """Check if content should be posted"""
+        # Check URL
+        if self.db.has_been_posted(url):
+            logger.info(f"❌ URL already posted")
+            return False
+        
+        # Check duplicates (fuzzy matching)
+        is_dup, match_info = self.duplicate_detector.is_duplicate(content, days=7)
+        if is_dup:
+            logger.info(f"❌ Duplicate detected: {match_info['method']} (similarity: {match_info.get('similarity', 1.0):.2%})")
+            return False
+        
+        return True
+    
+    def generate_tweet(self, article_title, article_url, content_type):
+        """Generate complete tweet with all enhancements"""
+        
+        # 1. Generate base content
+        base_content = generate_crypto_content(article_title, content_type)
+        
+        # 2. Apply A/B testing
+        test_plan = self.ab_framework.generate_test_plan(base_content)
+        modified_content, variants = self.ab_framework.apply_variants(base_content, test_plan)
+        
+        # 3. Check for duplicates
+        if not self.should_post_content(modified_content, article_url):
+            return None
+        
+        # 4. Process URL
+        final_url = self.url_manager.shorten_url(article_url)
+        
+        # 5. Select hashtags
+        hashtags = self.hashtag_optimizer.select_hashtags(
+            modified_content,
+            strategy='adaptive',
+            content_type=content_type
+        )
+        
+        # 6. Construct tweet
+        tweet_with_url = f"{modified_content}\n\n{final_url}"
+        
+        final_tweet, included_hashtags = self.hashtag_optimizer.optimize_tweet_with_hashtags(
+            tweet_with_url,
+            hashtags
+        )
+        
+        return {
+            'tweet_text': final_tweet,
+            'content_hash': self.duplicate_detector.get_exact_hash(modified_content),
+            'url': article_url,
+            'content_type': content_type,
+            'hashtags': included_hashtags,
+            'test_plan': test_plan
+        }
+    
+    def post_tweet(self, tweet_data):
+        """Post tweet to Twitter"""
+        global last_post_time, daily_posts
+        
+        try:
+            # Post to Twitter
+            response = twitter_client.create_tweet(text=tweet_data['tweet_text'])
+            tweet_id = response.data['id']
+            
+            # Log to database
+            self.db.log_post(
+                tweet_id=tweet_id,
+                url=tweet_data['url'],
+                content_hash=tweet_data['content_hash'],
+                tweet_text=tweet_data['tweet_text'],
+                content_type=tweet_data['content_type'],
+                hashtags=tweet_data['hashtags']
+            )
+            
+            self.db.log_content_hash(tweet_data['content_hash'], tweet_id)
+            
+            # Log A/B tests
+            for exp_name, variant in tweet_data['test_plan'].items():
+                self.db.log_ab_test(exp_name, variant, tweet_id)
+            
+            # Update tracking
+            last_post_time = datetime.now(pytz.UTC)
+            daily_posts += 1
+            
+            logger.info("="*60)
+            logger.info(f"✅ TWEET POSTED SUCCESSFULLY!")
+            logger.info(f"Tweet ID: {tweet_id}")
+            logger.info(f"URL: https://twitter.com/user/status/{tweet_id}")
+            logger.info(f"Content Type: {tweet_data['content_type']}")
+            logger.info(f"Hashtags: {tweet_data['hashtags']}")
+            logger.info(f"Daily Posts: {daily_posts}/{DAILY_POST_LIMIT}")
+            logger.info("="*60)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error posting tweet: {e}")
+            return False
+    
+    def run_posting_cycle(self):
+        """Run one posting cycle"""
+        global daily_posts
+        
+        # Check limits
+        if daily_posts >= DAILY_POST_LIMIT:
+            logger.info(f"Daily limit reached ({daily_posts}/{DAILY_POST_LIMIT})")
+            return False
+        
+        if not can_post_now():
+            return False
+        
+        # Select content type
+        content_type = random.choice(CRYPTO_CONTENT_TYPES)
+        logger.info(f"Selected content type: {content_type}")
+        
+        # Fetch articles
+        articles = fetch_crypto_articles(self.feed_monitor, RSS_FEEDS)
+        
+        if not articles:
+            logger.info("No articles available")
+            return False
+        
+        # Try each article
+        for article in articles:
+            tweet_data = self.generate_tweet(
+                article['title'],
+                article['url'],
+                content_type
+            )
+            
+            if tweet_data:
+                return self.post_tweet(tweet_data)
+        
+        logger.info("No suitable articles found")
         return False
 
-def log_content_hash(tweet_text):
-    content_hash = get_content_hash(tweet_text)
-    try:
-        with open(CONTENT_HASHES_FILE, 'a') as f:
-            f.write(f"{content_hash}\n")
-    except Exception as e:
-        write_log(f"Error logging content hash: {e}")
+# ═══════════════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
 
 def reset_daily_counter():
+    """Reset daily post counter"""
     global daily_posts, last_reset_date
     current_date = datetime.now(pytz.UTC).date()
     if current_date > last_reset_date:
         daily_posts = 0
         last_reset_date = current_date
-        write_log("Daily post counter reset to 0")
-
-def get_varied_content_type():
-    global recent_content_types
-    available_types = [t for t in CRYPTO_CONTENT_TYPES 
-                      if t not in recent_content_types[-2:]]
-    if not available_types:
-        available_types = CRYPTO_CONTENT_TYPES
-    selected = random.choice(available_types)
-    recent_content_types.append(selected)
-    if len(recent_content_types) > MAX_RECENT_TYPES:
-        recent_content_types.pop(0)
-    return selected
-
-# =========================
-# CRYPTO CONTENT GENERATION
-# =========================
-
-def generate_crypto_question(title):
-    prompt = f"Based on this crypto news: {title}\n\nCreate a simple, engaging question that makes people want to reply. Format: X or Y? Keep it under 150 characters.\n\nWrite ONLY the question:"
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You create engaging crypto questions that drive replies. Be concise and force a choice."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=60,
-            temperature=0.8
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"GPT question generation failed: {e}, using fallback")
-        return random.choice(CRYPTO_QUESTION_TEMPLATES)
-
-def generate_crypto_hot_take(title):
-    prompt = f"Based on this crypto news: {title}\n\nCreate a bold, controversial take that sparks debate. Start with: Unpopular opinion, Hot take, or Real talk. Be provocative but not offensive. Under 200 characters.\n\nWrite ONLY the tweet:"
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You create controversial but insightful crypto takes that drive engagement through debate."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=80,
-            temperature=0.9
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"GPT hot take generation failed: {e}, using fallback")
-        return f"Hot take: {random.choice(CRYPTO_HOT_TAKES)}"
-
-def generate_contrarian_take(title):
-    prompt = f"Based on this crypto news: {title}\n\nCreate a contrarian take that challenges mainstream thinking. Be thought-provoking and data-driven if possible. Under 200 characters.\n\nWrite ONLY the tweet:"
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You create contrarian crypto analysis that challenges mainstream narratives."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=80,
-            temperature=0.8
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"GPT contrarian generation failed: {e}, using fallback")
-        return f"Everyone's wrong about {title[:50]}... here's why:"
-
-def generate_educational_breakdown(title):
-    prompt = f"Based on this crypto news: {title}\n\nCreate an educational tweet that breaks down a concept. Start with Here's how or Understanding. Make it accessible and valuable. Under 200 characters.\n\nWrite ONLY the tweet:"
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You create educational crypto content that's easy to understand and valuable."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=80,
-            temperature=0.7
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"GPT educational generation failed: {e}, using fallback")
-        return f"Here's what {title[:60]} actually means:"
-
-def generate_market_analysis(title):
-    prompt = f"Based on this crypto news: {title}\n\nCreate a market analysis tweet explaining the why behind the move. Focus on causes and implications. Under 200 characters.\n\nWrite ONLY the tweet:"
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You create insightful crypto market analysis that explains price movements and trends."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=80,
-            temperature=0.7
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"GPT market analysis generation failed: {e}, using fallback")
-        return f"Why this matters for crypto: {title[:80]}"
-
-def generate_listicle_thread(title):
-    numbers = ["3", "5", "7"]
-    number = random.choice(numbers)
-    prompt = f"Based on this crypto news: {title}\n\nCreate a tweet announcing a {number}-point breakdown. Format: {number} things about [topic]. Make it compelling and promise value. Under 180 characters.\n\nWrite ONLY the tweet:"
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You create compelling list-based crypto content that drives saves and shares."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=70,
-            temperature=0.7
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        write_log(f"GPT listicle generation failed: {e}, using fallback")
-        return f"{number} things you need to know about {title[:60]}"
-
-def generate_crypto_content(title, content_type):
-    generators = {
-        "question": generate_crypto_question,
-        "hot_take": generate_crypto_hot_take,
-        "contrarian": generate_contrarian_take,
-        "educational": generate_educational_breakdown,
-        "market_analysis": generate_market_analysis,
-        "breakdown": generate_listicle_thread
-    }
-    generator = generators.get(content_type, generate_educational_breakdown)
-    try:
-        return generator(title)
-    except Exception as e:
-        write_log(f"Content generation failed completely: {e}, using simple fallback")
-        return f"Breaking: {title[:150]}"
-
-def add_crypto_visual_elements(tweet_text):
-    if any(emoji in tweet_text for emoji in CRYPTO_EMOJIS):
-        return tweet_text
-    text_lower = tweet_text.lower()
-    if any(word in text_lower for word in ["bitcoin", "btc"]):
-        return f"₿ {tweet_text}"
-    elif any(word in text_lower for word in ["up", "surge", "pump", "bull"]):
-        return f"📈 {tweet_text}"
-    elif any(word in text_lower for word in ["down", "dump", "bear", "crash"]):
-        return f"📉 {tweet_text}"
-    elif any(word in text_lower for word in ["analysis", "breakdown", "data"]):
-        return f"📊 {tweet_text}"
-    elif any(word in text_lower for word in ["hot", "fire", "controversial"]):
-        return f"🔥 {tweet_text}"
-    else:
-        return f"{random.choice(CRYPTO_EMOJIS)} {tweet_text}"
-
-def get_crypto_hashtags():
-    selected = random.sample(CRYPTO_HASHTAGS["primary"], 2)
-    if random.random() < 0.4:
-        selected.append(random.choice(CRYPTO_HASHTAGS["trending"]))
-    if random.random() < 0.2:
-        selected.append(random.choice(CRYPTO_HASHTAGS["specific"]))
-    return selected[:3]
-
-def optimize_hashtags(tweet_text):
-    hashtags = get_crypto_hashtags()
-    available_space = 280 - len(tweet_text) - 5
-    hashtag_text = " " + " ".join(hashtags)
-    if len(hashtag_text) <= available_space:
-        return tweet_text + hashtag_text
-    return tweet_text
-
-# =========================
-# CONTENT FETCHING & POSTING
-# =========================
-
-def fetch_rss_with_retry(feed_url, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            response = requests.get(feed_url, headers=headers, timeout=15)
-            response.raise_for_status()
-            feed = feedparser.parse(response.content)
-            if feed.entries:
-                articles = []
-                for entry in feed.entries[:5]:
-                    article = {
-                        "title": entry.title,
-                        "url": entry.link,
-                        "published_parsed": getattr(entry, 'published_parsed', None)
-                    }
-                    articles.append(article)
-                return articles
-        except Exception as e:
-            if attempt < max_retries - 1:
-                wait_time = 2 ** attempt
-                write_log(f"RSS fetch failed for {feed_url} (attempt {attempt+1}/{max_retries}), retrying in {wait_time}s: {e}")
-                time.sleep(wait_time)
-            else:
-                write_log(f"RSS fetch failed after {max_retries} attempts for {feed_url}: {e}")
-    return []
-
-def get_crypto_articles():
-    articles = []
-    for feed in RSS_FEEDS:
-        feed_articles = fetch_rss_with_retry(feed)
-        if feed_articles:
-            articles.extend(feed_articles)
-    write_log(f"Total crypto articles fetched: {len(articles)}")
-    return articles
-
-def has_been_posted(url):
-    if not os.path.exists(POSTED_LOG):
-        return False
-    try:
-        with open(POSTED_LOG, "r") as f:
-            return url.strip() in f.read()
-    except Exception as e:
-        write_log(f"Error checking posted log: {e}")
-        return False
-
-def log_posted(url):
-    try:
-        with open(POSTED_LOG, "a") as f:
-            f.write(url.strip() + "\n")
-    except Exception as e:
-        write_log(f"Error logging posted URL: {e}")
+        logger.info("Daily post counter reset")
 
 def can_post_now():
+    """Check if enough time has passed"""
     global last_post_time
     if last_post_time is None:
         return True
     time_since_last = datetime.now(pytz.UTC) - last_post_time
     return time_since_last.total_seconds() >= (POST_INTERVAL_MINUTES * 60)
 
-def shorten_url(long_url):
-    try:
-        api_url = f"http://tinyurl.com/api-create.php?url={long_url}"
-        response = requests.get(api_url, timeout=5)
-        if response.status_code == 200 and response.text.strip().startswith('http'):
-            return response.text.strip()
-    except Exception as e:
-        write_log(f"URL shortening failed: {e}, using original URL")
-    return long_url
-
-def post_crypto_content():
-    global last_post_time, daily_posts
-    reset_daily_counter()
-    if daily_posts >= DAILY_POST_LIMIT:
-        write_log(f"Daily limit reached ({daily_posts}/{DAILY_POST_LIMIT} posts)")
-        return False
-    if not can_post_now():
-        write_log("Cannot post - rate limited (90 min interval)")
-        return False
-    content_type = get_varied_content_type()
-    write_log(f"Selected content type: {content_type}")
-    articles = get_crypto_articles()
-    if not articles:
-        write_log("No articles fetched from RSS feeds")
-        return False
-    for article in articles:
-        if has_been_posted(article["url"]):
-            continue
-        try:
-            tweet_text = generate_crypto_content(article["title"], content_type)
-        except Exception as e:
-            write_log(f"Content generation error: {e}")
-            continue
-        if is_similar_content(tweet_text):
-            write_log(f"Similar content detected, skipping")
-            continue
-        tweet_text = add_crypto_visual_elements(tweet_text)
-        short_url = shorten_url(article["url"])
-        full_tweet = f"{tweet_text}\n\n{short_url}"
-        full_tweet = optimize_hashtags(full_tweet)
-        hashtags = [word for word in full_tweet.split() if word.startswith('#')]
-        if len(full_tweet) > 280:
-            full_tweet = full_tweet[:277] + "..."
-        engagement_style = "standard"
-        if "?" in tweet_text:
-            engagement_style = "question"
-        elif any(phrase in tweet_text.lower() for phrase in ["hot take", "unpopular", "controversial"]):
-            engagement_style = "provocative"
-        elif any(phrase in tweet_text.lower() for phrase in ["here's how", "understanding", "breakdown"]):
-            engagement_style = "educational"
-        max_retries = 3
-        retry_delay = 5
-        for attempt in range(max_retries):
-            try:
-                response = twitter_client.create_tweet(text=full_tweet)
-                tweet_id = response.data['id']
-                log_posted(article["url"])
-                log_content_hash(tweet_text)
-                last_post_time = datetime.now(pytz.UTC)
-                daily_posts += 1
-                write_log("="*60)
-                write_log(f"TWEET POSTED SUCCESSFULLY!")
-                write_log(f"Daily posts: {daily_posts}/{DAILY_POST_LIMIT}")
-                write_log(f"Content type: {content_type}")
-                write_log(f"Tweet: {tweet_text[:80]}...")
-                write_log(f"Hashtags: {', '.join(hashtags) if hashtags else 'None'}")
-                write_log(f"Engagement style: {engagement_style}")
-                write_log(f"Tweet ID: {tweet_id}")
-                write_log(f"URL: https://twitter.com/user/status/{tweet_id}")
-                write_log("="*60)
-                return True
-            except Exception as e:
-                error_msg = str(e)
-                if "403" in error_msg or "forbidden" in error_msg.lower():
-                    write_log(f"403 Forbidden error - check API permissions: {e}", level="error")
-                    return False
-                elif "duplicate" in error_msg.lower():
-                    write_log(f"Duplicate content detected by Twitter: {e}")
-                    break
-                elif "429" in error_msg or "rate limit" in error_msg.lower():
-                    write_log(f"Rate limit hit: {e}", level="error")
-                    return False
-                elif attempt < max_retries - 1:
-                    write_log(f"Network error on attempt {attempt + 1}/{max_retries}: {error_msg}")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                else:
-                    write_log(f"All {max_retries} retry attempts failed: {e}", level="error")
-                    break
-    write_log(f"No new crypto articles to post (all already posted or failed)")
-    return False
-
-# =========================
-# SCHEDULER
-# =========================
-
 def should_post_now():
+    """Check if current time matches schedule"""
     current_time = datetime.now(pytz.UTC).strftime("%H:%M")
     return current_time in POSTING_TIMES
 
-def get_next_posting_time():
-    current_time = datetime.now(pytz.UTC)
-    current_str = current_time.strftime("%H:%M")
-    for post_time in POSTING_TIMES:
-        if post_time > current_str:
-            return post_time
-    return POSTING_TIMES[0]
+# ═══════════════════════════════════════════════════════════════════════════
+# SCHEDULER
+# ═══════════════════════════════════════════════════════════════════════════
 
-def run_posting_job():
-    try:
-        write_log("Starting crypto posting job...")
-        success = post_crypto_content()
-        if success:
-            write_log("Crypto posting job completed successfully")
-        else:
-            write_log("Crypto posting job completed with no posts")
-    except Exception as e:
-        write_log(f"Error in posting job: {e}", level="error")
-
-def start_scheduler():
-    write_log("Starting CRYPTO-FOCUSED scheduler...")
-    write_log("="*60)
-    write_log("Niche: CRYPTO ONLY")
-    write_log(f"Posting times (UTC): {POSTING_TIMES}")
-    write_log(f"Content types: {CRYPTO_CONTENT_TYPES}")
-    write_log("Engagement strategy: Questions, Hot Takes, Contrarian Views")
-    write_log(f"Daily limit: {DAILY_POST_LIMIT} posts")
-    write_log(f"Post interval: {POST_INTERVAL_MINUTES} minutes")
-    write_log("="*60)
+def start_scheduler(bot):
+    """Main scheduler loop"""
+    logger.info("="*60)
+    logger.info("🚀 STARTING CRYPTO BOT SCHEDULER")
+    logger.info("="*60)
+    logger.info(f"Daily Limit: {DAILY_POST_LIMIT} posts")
+    logger.info(f"Posting Times: {len(POSTING_TIMES)} times per day")
+    logger.info(f"Post Interval: {POST_INTERVAL_MINUTES} minutes")
+    logger.info("="*60 + "\n")
+    
     last_checked_minute = None
     last_heartbeat = datetime.now(pytz.UTC)
-    heartbeat_interval = 300
-    loop_count = 0
+    
     while True:
         try:
             current_time = datetime.now(pytz.UTC)
             current_minute = current_time.strftime("%H:%M")
-            loop_count += 1
-            if (current_time - last_heartbeat).total_seconds() >= heartbeat_interval:
-                next_post = get_next_posting_time()
-                write_log(f"HEARTBEAT #{loop_count} - Bot running | Time: {current_minute} UTC | Next post: {next_post} | Daily: {daily_posts}/{DAILY_POST_LIMIT}")
+            
+            # Heartbeat every 5 minutes
+            if (current_time - last_heartbeat).total_seconds() >= 300:
+                logger.info(f"💓 Bot running | Time: {current_minute} UTC | Daily: {daily_posts}/{DAILY_POST_LIMIT}")
                 last_heartbeat = current_time
+            
+            # Check for posting time
             if current_minute != last_checked_minute:
-                write_log(f"Time check: {current_minute} UTC (Loop #{loop_count})")
                 if should_post_now():
-                    write_log(f"Posting time reached: {current_minute}")
-                    run_posting_job()
+                    logger.info(f"\n⏰ Posting time: {current_minute}")
+                    reset_daily_counter()
+                    bot.run_posting_cycle()
+                
                 last_checked_minute = current_minute
+            
             time.sleep(30)
+            
         except KeyboardInterrupt:
-            write_log("Keyboard interrupt detected - shutting down gracefully...")
-            raise
+            logger.info("\n👋 Shutting down...")
+            logger.info(f"Final stats: {daily_posts} posts today")
+            break
         except Exception as e:
-            write_log(f"ERROR in scheduler loop: {e}", level="error")
-            write_log("Continuing after 60 second cooldown...")
+            logger.error(f"❌ Scheduler error: {e}")
             time.sleep(60)
 
-# =========================
-# HEALTH SERVER
-# =========================
+# ═══════════════════════════════════════════════════════════════════════════
+# HEALTH CHECK SERVER
+# ═══════════════════════════════════════════════════════════════════════════
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        status_text = f"Crypto-Focused Twitter Bot: RUNNING\n\nCurrent Time: {datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}\nLast Post: {last_post_time.strftime('%Y-%m-%d %H:%M:%S UTC') if last_post_time else 'Never'}\nDaily Posts: {daily_posts}/{DAILY_POST_LIMIT}\n\nPosting Times: {', '.join(POSTING_TIMES)}\n"
-        self.wfile.write(status_text.encode())
-    def do_HEAD(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
+        status = f"Crypto Bot: RUNNING\nTime: {datetime.now(pytz.UTC)}\nPosts: {daily_posts}/{DAILY_POST_LIMIT}\n"
+        self.wfile.write(status.encode())
+    
     def log_message(self, format, *args):
         pass
 
@@ -643,83 +1152,35 @@ def start_health_server():
     port = int(os.environ.get('PORT', 10000))
     try:
         server = HTTPServer(('0.0.0.0', port), HealthHandler)
-        write_log(f"Health server started on port {port}")
+        logger.info(f"Health server on port {port}")
         server.serve_forever()
     except Exception as e:
-        write_log(f"Health server failed to start: {e}", level="error")
+        logger.error(f"Health server error: {e}")
 
-# =========================
-# TESTING FUNCTIONS
-# =========================
-
-def test_auth():
-    try:
-        me = twitter_api.verify_credentials()
-        write_log(f"Authentication successful! @{me.screen_name}")
-        write_log(f"Followers: {me.followers_count}")
-        return True
-    except Exception as e:
-        write_log(f"Authentication failed: {e}", level="error")
-        return False
-
-def test_content_generation():
-    write_log("Testing content generation...")
-    test_title = "Bitcoin surges past $50K as institutional adoption accelerates"
-    for content_type in CRYPTO_CONTENT_TYPES:
-        try:
-            content = generate_crypto_content(test_title, content_type)
-            write_log(f"{content_type}: {content[:60]}...")
-        except Exception as e:
-            write_log(f"{content_type}: {e}")
-    return True
-
-def validate_env_vars():
-    required_vars = [
-        "OPENAI_API_KEY", "TWITTER_API_KEY", "TWITTER_API_SECRET",
-        "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"
-    ]
-    missing = [var for var in required_vars if not os.getenv(var)]
-    if missing:
-        error_msg = f"Missing environment variables: {', '.join(missing)}"
-        write_log(error_msg, level="error")
-        raise EnvironmentError(error_msg)
-    write_log("All required environment variables present")
-
-# =========================
+# ═══════════════════════════════════════════════════════════════════════════
 # MAIN EXECUTION
-# =========================
+# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    write_log("="*60)
-    write_log("CRYPTO-FOCUSED TWITTER BOT STARTUP")
-    write_log("="*60)
     try:
-        validate_env_vars()
-    except Exception as e:
-        write_log(f"Environment validation failed: {e}", level="error")
-        exit(1)
-    if not test_auth():
-        write_log("CRITICAL: Authentication failed. Bot cannot run.", level="error")
-        exit(1)
-    test_content_generation()
-    write_log("")
-    write_log("Starting health check server...")
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
-    write_log("")
-    write_log("="*60)
-    write_log("STARTING CRYPTO SCHEDULER")
-    write_log("="*60)
-    write_log("")
-    try:
-        start_scheduler()
+        # Test Twitter auth
+        logger.info("Testing Twitter authentication...")
+        me = twitter_api.verify_credentials()
+        logger.info(f"✅ Authenticated as @{me.screen_name}")
+        
+        # Initialize bot
+        bot = CompleteCryptoBot()
+        
+        # Start health server
+        health_thread = threading.Thread(target=start_health_server, daemon=True)
+        health_thread.start()
+        
+        # Start scheduler
+        start_scheduler(bot)
+        
     except KeyboardInterrupt:
-        write_log("")
-        write_log("="*60)
-        write_log("Bot stopped by user")
-        write_log(f"Final stats: {daily_posts} posts today")
-        write_log("="*60)
+        logger.info("\n👋 Bot stopped by user")
         exit(0)
     except Exception as e:
-        write_log(f"CRITICAL ERROR: {e}", level="error")
+        logger.error(f"\n❌ CRITICAL ERROR: {e}")
         exit(1)
