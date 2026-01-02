@@ -1,23 +1,22 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-    COMPLETE CRYPTO TWITTER BOT - ALL ENHANCEMENTS INTEGRATED
+    COMPLETE CRYPTO TWITTER BOT WITH INSPIRATIONAL QUOTES
+    10 News Posts + 4 Quote Posts = 14 Total Posts Per Day
 ═══════════════════════════════════════════════════════════════════════════════
 
-FEATURES INCLUDED:
-✅ SQLite Database Management (replaces text files)
-✅ A/B Testing Framework (5 simultaneous experiments)
-✅ Intelligent Hashtag Optimization (5 strategies)
-✅ Fuzzy Duplicate Detection (catches near-duplicates)
-✅ Multi-Service URL Management (with fallback)
-✅ RSS Feed Health Monitoring (validates & tracks)
-✅ Comprehensive Analytics & Reporting
-✅ Error Handling & Retry Logic
-✅ Daily Statistics & Performance Tracking
+FEATURES:
+✅ 10 Crypto News Posts (from RSS feeds)
+✅ 4 Inspirational Quote Posts (Contrarian, Question, Educational, Bold)
+✅ Smart Rotation System (ensures variety)
+✅ All Previous Enhancements (Database, A/B Testing, etc.)
 
-AUTHOR: Enhanced Crypto Bot V2
-VERSION: 2.0
-DATE: 2026
+QUOTE CATEGORIES:
+- Contrarian: Challenge mainstream thinking
+- Question-based: Drive replies and discussion
+- Educational: Provide value and insights
+- Bold/Controversial: High engagement, debate-worthy
 
+VERSION: 2.1 - Quote Integration
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -64,17 +63,35 @@ BITLY_TOKEN = os.getenv("BITLY_TOKEN")  # Optional
 # Database
 DATABASE_PATH = "crypto_bot_data.db"
 
-# Posting Configuration
-DAILY_POST_LIMIT = 15
+# NEW: Posting Limits
+DAILY_NEWS_LIMIT = 10        # 10 crypto news posts
+DAILY_QUOTE_LIMIT = 4        # 4 inspirational quotes
+DAILY_TOTAL_LIMIT = 14       # Total posts per day
 POST_INTERVAL_MINUTES = 90
+
+# Tracking
 last_post_time = None
-daily_posts = 0
+daily_news_posts = 0
+daily_quote_posts = 0
 last_reset_date = datetime.now(pytz.UTC).date()
 
-# Posting Schedule (UTC)
-POSTING_TIMES = [
-    "03:00", "05:00", "07:00", "09:00", "11:00", "13:00",
-    "15:00", "17:00", "19:00", "21:00", "23:00", "01:00"
+# NEW: Posting Schedule with Post Types
+# Format: (time, post_type)
+POSTING_SCHEDULE = [
+    ("03:00", "news"),      # 1. News
+    ("04:32", "quote"),     # 2. Quote
+    ("06:04", "news"),      # 3. News
+    ("07:36", "news"),      # 4. News
+    ("09:08", "quote"),     # 5. Quote
+    ("11:40", "news"),      # 6. News
+    ("13:12", "news"),      # 7. News
+    ("14:44", "quote"),     # 8. Quote
+    ("16:16", "news"),      # 9. News
+    ("17:48", "news"),      # 10. News
+    ("19:20", "quote"),     # 11. Quote
+    ("20:52", "news"),      # 12. News
+    ("22:34", "news"),      # 13. News
+    ("00:38", "news")       # 14. News
 ]
 
 # Content Types
@@ -82,6 +99,9 @@ CRYPTO_CONTENT_TYPES = [
     "educational", "market_analysis", "contrarian",
     "question", "hot_take", "breakdown"
 ]
+
+# NEW: Quote Categories
+QUOTE_CATEGORIES = ["contrarian", "question", "educational", "bold"]
 
 # RSS Feeds
 RSS_FEEDS = [
@@ -92,8 +112,101 @@ RSS_FEEDS = [
     "https://bitcoinmagazine.com/.rss/full/"
 ]
 
-# Duplicate Detection Threshold
-SIMILARITY_THRESHOLD = 0.75  # 75% similarity = duplicate
+# Duplicate Detection
+SIMILARITY_THRESHOLD = 0.75
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INSPIRATIONAL QUOTES DATABASE
+# ═══════════════════════════════════════════════════════════════════════════
+
+INSPIRATIONAL_QUOTES = {
+    "contrarian": [
+        "When everyone is fearful, that's when fortunes are made. Be greedy when others are fearful.",
+        "The crowd is usually wrong at the extremes. Think independently.",
+        "Real wealth is built by going against the noise, not following it.",
+        "If you're not uncomfortable, you're probably not growing your portfolio fast enough.",
+        "The next Bitcoin millionaire is someone buying today while others panic.",
+        "Your future self will either thank you or regret your inaction. Choose wisely.",
+        "Markets reward contrarians who have the courage to act when everyone else freezes.",
+        "The best opportunities look risky to the crowd. That's why they're opportunities.",
+        "Popular opinion is expensive. Independent thinking is profitable.",
+        "Everyone talks about buying the dip. Few have the conviction to actually do it.",
+        "The herd mentality makes you broke. Independent analysis makes you rich.",
+        "When the news is worst, that's often when the opportunity is best.",
+        "Comfort zones build average portfolios. Calculated risks build generational wealth.",
+        "The majority is often wrong at market turning points. Are you following or leading?",
+        "Successful investing means being lonely sometimes. Get comfortable with it.",
+    ],
+    
+    "question": [
+        "What's your crypto strategy for 2026? Drop it below 👇",
+        "Bull market or bear market - which teaches you more? Let's discuss.",
+        "If you could only hold one coin for 10 years, what would it be?",
+        "DCA or lump sum investing? Which strategy works better for you?",
+        "What's the biggest lesson crypto taught you? Share your wisdom 👇",
+        "HODL or active trading? What's your game plan?",
+        "Which matters more: technical analysis or fundamentals? Defend your choice.",
+        "What percentage of your portfolio is in crypto? Too much? Too little?",
+        "If you could go back to 2020, what would you tell yourself about crypto?",
+        "What's more important: timing the market or time in the market?",
+        "Layer 1 or Layer 2 solutions - where's the real opportunity?",
+        "Staking or lending - which generates better passive income for you?",
+        "What's the most underrated crypto skill nobody talks about?",
+        "How do you manage FOMO when coins are pumping? Share your tactics.",
+        "What's your exit strategy? Or are you never selling?",
+        "Which crypto narrative will dominate 2026? DeFi, NFTs, AI, or something else?",
+        "What's one crypto myth you wish people would stop believing?",
+        "How much research do you do before buying a coin? Hours, days, weeks?",
+        "What's your risk management strategy? How do you protect your portfolio?",
+        "If crypto disappeared tomorrow, what's the most valuable skill you gained?",
+    ],
+    
+    "educational": [
+        "Don't invest in what you don't understand. Study first, invest second.",
+        "The market rewards those who do their homework. DYOR isn't optional. 📚",
+        "Risk management isn't sexy. But it's what separates winners from gamblers.",
+        "Diversification isn't being scared. It's being smart.",
+        "Price is what you pay. Value is what you get. Know the difference.",
+        "The best investment you can make is in your own education. Start there.",
+        "Understanding tokenomics > Following influencers. Always.",
+        "A strategy without discipline is just a wish. Build both.",
+        "Reading whitepapers > Reading tweets. One builds wealth, one builds noise.",
+        "Compound interest is the eighth wonder of the world. Let it work for you. ⏰💰",
+        "Your biggest edge isn't information. It's how you process it.",
+        "Learning to lose small is more valuable than learning to win big.",
+        "The blockchain doesn't care about your feelings. It rewards knowledge and patience.",
+        "Understanding market cycles > Predicting market moves.",
+        "Position sizing is the difference between surviving and thriving in crypto.",
+        "Smart contracts are code. Code has bugs. Never invest more than you can afford to lose.",
+        "On-chain analysis beats Twitter sentiment. Learn to read the blockchain.",
+        "Security isn't paranoia. It's insurance for your financial future.",
+        "The best traders keep journals. Track, analyze, improve. Repeat.",
+        "Volatility isn't risk. Not understanding what you own is the real risk.",
+    ],
+    
+    "bold": [
+        "Fear keeps you broke. Knowledge makes you rich. Which one are you choosing?",
+        "Your 2030 self is watching. Make them proud. 👀",
+        "Stop waiting for perfect entry. Perfect execution beats perfect timing.",
+        "Fortune favors the brave. But it rewards the prepared. Be both.",
+        "The best traders aren't lucky. They're disciplined. Which one are you?",
+        "Success leaves clues. Study the winners, not the gamblers.",
+        "Don't chase pumps. Build positions. Patience pays better than FOMO.",
+        "Every dip is a discount if you're playing the long game. 💎🙌",
+        "Your biggest competition isn't other traders. It's your own emotions.",
+        "The hardest trades are usually the right ones. Trust your strategy.",
+        "Wealth isn't built in green candles. It's built in red ones. 📉➡️📈",
+        "Markets crash. Conviction doesn't. Stay focused on fundamentals.",
+        "The best time to invest was yesterday. The second best time is now.",
+        "Don't wait for the bull run. Build during the bear market. 🐻➡️🐂",
+        "Your portfolio in 5 years will thank you for the decisions you make today.",
+        "Volatility is the price of admission. Patience is the price of profit.",
+        "Think in decades, not days. That's how generational wealth is built.",
+        "Small consistent gains beat big risky bets. Play the long game.",
+        "Financial freedom isn't about getting rich quick. It's about getting rich for sure.",
+        "The difference between where you are and where you want to be is action. Start now.",
+    ]
+}
 
 # ═══════════════════════════════════════════════════════════════════════════
 # LOGGING SETUP
@@ -132,7 +245,7 @@ twitter_client = tweepy.Client(
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DATABASE MANAGER
+# DATABASE MANAGER (Enhanced with Quote Tracking)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class DatabaseManager:
@@ -162,15 +275,17 @@ class DatabaseManager:
         with self.get_connection() as conn:
             c = conn.cursor()
             
-            # Posts table
+            # Posts table (modified to include post_type)
             c.execute('''
                 CREATE TABLE IF NOT EXISTS posts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tweet_id TEXT UNIQUE NOT NULL,
-                    url TEXT NOT NULL,
+                    post_type TEXT NOT NULL,
+                    url TEXT,
                     content_hash TEXT NOT NULL,
                     tweet_text TEXT NOT NULL,
                     content_type TEXT NOT NULL,
+                    quote_category TEXT,
                     hashtags TEXT,
                     posted_at TIMESTAMP NOT NULL,
                     likes INTEGER DEFAULT 0,
@@ -221,6 +336,20 @@ class DatabaseManager:
                 )
             ''')
             
+            # NEW: Quote performance table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS quote_performance (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    quote_category TEXT NOT NULL,
+                    quote_text TEXT NOT NULL,
+                    uses_count INTEGER DEFAULT 0,
+                    total_engagement INTEGER DEFAULT 0,
+                    avg_engagement REAL DEFAULT 0.0,
+                    last_used TIMESTAMP,
+                    performance_score REAL DEFAULT 0.0
+                )
+            ''')
+            
             # RSS sources table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS rss_sources (
@@ -238,10 +367,12 @@ class DatabaseManager:
             # Create indexes
             c.execute('CREATE INDEX IF NOT EXISTS idx_posts_posted_at ON posts(posted_at)')
             c.execute('CREATE INDEX IF NOT EXISTS idx_posts_content_type ON posts(content_type)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_posts_post_type ON posts(post_type)')
             
             logger.info("✅ Database initialized")
     
-    def log_post(self, tweet_id, url, content_hash, tweet_text, content_type, hashtags):
+    def log_post(self, tweet_id, post_type, url, content_hash, tweet_text, 
+                 content_type, hashtags, quote_category=None):
         """Log a new post"""
         with self.get_connection() as conn:
             c = conn.cursor()
@@ -249,13 +380,16 @@ class DatabaseManager:
             hashtag_str = json.dumps(hashtags) if hashtags else None
             
             c.execute('''
-                INSERT INTO posts (tweet_id, url, content_hash, tweet_text, 
-                                 content_type, hashtags, posted_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (tweet_id, url, content_hash, tweet_text, content_type, hashtag_str, now))
+                INSERT INTO posts (tweet_id, post_type, url, content_hash, tweet_text, 
+                                 content_type, quote_category, hashtags, posted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (tweet_id, post_type, url, content_hash, tweet_text, 
+                  content_type, quote_category, hashtag_str, now))
     
     def has_been_posted(self, url):
         """Check if URL has been posted"""
+        if not url:
+            return False
         with self.get_connection() as conn:
             c = conn.cursor()
             c.execute('SELECT COUNT(*) FROM posts WHERE url = ?', (url,))
@@ -290,7 +424,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             c = conn.cursor()
             c.execute('''
-                SELECT tweet_id, tweet_text, content_type, posted_at,
+                SELECT tweet_id, tweet_text, content_type, post_type, posted_at,
                        likes, retweets, replies, engagement_rate
                 FROM posts
                 ORDER BY posted_at DESC
@@ -303,11 +437,12 @@ class DatabaseManager:
                     'tweet_id': row[0],
                     'tweet_text': row[1],
                     'content_type': row[2],
-                    'posted_at': row[3],
-                    'likes': row[4],
-                    'retweets': row[5],
-                    'replies': row[6],
-                    'engagement_rate': row[7]
+                    'post_type': row[3],
+                    'posted_at': row[4],
+                    'likes': row[5],
+                    'retweets': row[6],
+                    'replies': row[7],
+                    'engagement_rate': row[8]
                 })
             return results
     
@@ -320,13 +455,14 @@ class DatabaseManager:
             c.execute('''
                 SELECT 
                     content_type,
+                    post_type,
                     COUNT(*) as post_count,
                     AVG(likes) as avg_likes,
                     AVG(retweets) as avg_retweets,
                     AVG(engagement_rate) as avg_engagement_rate
                 FROM posts
                 WHERE posted_at > ? AND engagement_rate > 0
-                GROUP BY content_type
+                GROUP BY content_type, post_type
                 ORDER BY avg_engagement_rate DESC
             ''', (cutoff,))
             
@@ -334,10 +470,11 @@ class DatabaseManager:
             for row in c.fetchall():
                 results.append({
                     'content_type': row[0],
-                    'post_count': row[1],
-                    'avg_likes': round(row[2], 2),
-                    'avg_retweets': round(row[3], 2),
-                    'avg_engagement_rate': round(row[4], 2)
+                    'post_type': row[1],
+                    'post_count': row[2],
+                    'avg_likes': round(row[3], 2),
+                    'avg_retweets': round(row[4], 2),
+                    'avg_engagement_rate': round(row[5], 2)
                 })
             return results
     
@@ -432,18 +569,169 @@ class DatabaseManager:
                      0 if success else 1, 
                      1.0 if success else 0.0))
     
-    def get_daily_post_count(self, date=None):
-        """Get number of posts for a date"""
+    def get_daily_post_count(self, date=None, post_type=None):
+        """Get number of posts for a date, optionally filtered by type"""
         if date is None:
             date = datetime.now(pytz.UTC).date()
         
         with self.get_connection() as conn:
             c = conn.cursor()
-            c.execute('SELECT COUNT(*) FROM posts WHERE DATE(posted_at) = ?', (date,))
+            if post_type:
+                c.execute('SELECT COUNT(*) FROM posts WHERE DATE(posted_at) = ? AND post_type = ?', 
+                         (date, post_type))
+            else:
+                c.execute('SELECT COUNT(*) FROM posts WHERE DATE(posted_at) = ?', (date,))
             return c.fetchone()[0]
+    
+    def log_quote_performance(self, quote_category, quote_text, engagement):
+        """Track quote performance"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now(pytz.UTC)
+            
+            c.execute('''
+                SELECT uses_count, total_engagement 
+                FROM quote_performance 
+                WHERE quote_category = ? AND quote_text = ?
+            ''', (quote_category, quote_text))
+            result = c.fetchone()
+            
+            if result:
+                new_uses = result[0] + 1
+                new_total = result[1] + engagement
+                new_avg = new_total / new_uses
+                
+                c.execute('''
+                    UPDATE quote_performance 
+                    SET uses_count = ?, total_engagement = ?, 
+                        avg_engagement = ?, last_used = ?, performance_score = ?
+                    WHERE quote_category = ? AND quote_text = ?
+                ''', (new_uses, new_total, new_avg, now, new_avg, quote_category, quote_text))
+            else:
+                c.execute('''
+                    INSERT INTO quote_performance 
+                    (quote_category, quote_text, uses_count, total_engagement, 
+                     avg_engagement, last_used, performance_score)
+                    VALUES (?, ?, 1, ?, ?, ?, ?)
+                ''', (quote_category, quote_text, engagement, engagement, now, engagement))
+    
+    def get_top_quotes_by_category(self, category, limit=5):
+        """Get top performing quotes for a category"""
+        with self.get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT quote_text, avg_engagement, uses_count
+                FROM quote_performance
+                WHERE quote_category = ? AND uses_count >= 1
+                ORDER BY performance_score DESC
+                LIMIT ?
+            ''', (category, limit))
+            
+            results = []
+            for row in c.fetchall():
+                results.append({
+                    'quote_text': row[0],
+                    'avg_engagement': round(row[1], 2),
+                    'uses_count': row[2]
+                })
+            return results
 
 # ═══════════════════════════════════════════════════════════════════════════
-# FUZZY DUPLICATE DETECTOR
+# QUOTE SELECTOR (NEW)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class QuoteSelector:
+    """Manages quote selection with rotation and performance tracking"""
+    
+    def __init__(self, db_manager):
+        self.db = db_manager
+        self.last_categories = []  # Track last used categories
+        self.max_history = 4  # Don't repeat category within last 4 quotes
+    
+    def select_category(self):
+        """Select quote category with smart rotation"""
+        available = [cat for cat in QUOTE_CATEGORIES if cat not in self.last_categories[-2:]]
+        
+        if not available:
+            available = QUOTE_CATEGORIES
+        
+        # Weight by performance (if we have data)
+        selected = random.choice(available)
+        
+        # Update history
+        self.last_categories.append(selected)
+        if len(self.last_categories) > self.max_history:
+            self.last_categories.pop(0)
+        
+        return selected
+    
+    def select_quote(self, category):
+        """Select a specific quote from category"""
+        quotes = INSPIRATIONAL_QUOTES.get(category, [])
+        
+        if not quotes:
+            return None
+        
+        # Get performance data
+        top_quotes = self.db.get_top_quotes_by_category(category, limit=3)
+        
+        if top_quotes and random.random() < 0.7:  # 70% use top performers
+            return random.choice([q['quote_text'] for q in top_quotes])
+        else:
+            # Use fresh quote
+            return random.choice(quotes)
+    
+    def format_quote_tweet(self, quote_text, category):
+        """Format quote into tweet with appropriate styling"""
+        
+        # Add category-specific emojis
+        category_emojis = {
+            'contrarian': '🎯',
+            'question': '💭',
+            'educational': '📚',
+            'bold': '🔥'
+        }
+        
+        emoji = category_emojis.get(category, '💡')
+        
+        # For questions, keep as-is
+        if category == 'question':
+            formatted = f"{emoji} {quote_text}"
+        else:
+            # Add quotes for statements
+            formatted = f'{emoji} "{quote_text}"'
+        
+        # Add hashtags
+        hashtags = self._get_quote_hashtags(category)
+        
+        # Check length and adjust
+        if len(formatted) + len(" ".join(hashtags)) + 2 <= 280:
+            formatted += "\n\n" + " ".join(hashtags)
+        else:
+            # Use fewer hashtags if needed
+            formatted += "\n\n" + " ".join(hashtags[:1])
+        
+        return formatted, hashtags
+    
+    def _get_quote_hashtags(self, category):
+        """Get appropriate hashtags for quote category"""
+        base_tags = ['#Crypto', '#Bitcoin']
+        
+        category_tags = {
+            'contrarian': ['#Investing', '#Mindset'],
+            'question': ['#CryptoTwitter', '#Discussion'],
+            'educational': ['#CryptoEducation', '#Learning'],
+            'bold': ['#Motivation', '#Wealth']
+        }
+        
+        specific = category_tags.get(category, [])
+        
+        # Return 1-2 tags
+        return [random.choice(base_tags)] + ([random.choice(specific)] if specific else [])
+
+# ═══════════════════════════════════════════════════════════════════════════
+# REST OF THE COMPONENTS (Duplicate Detector, URL Manager, etc.)
+# These remain the same as before...
 # ═══════════════════════════════════════════════════════════════════════════
 
 class DuplicateDetector:
@@ -454,34 +742,29 @@ class DuplicateDetector:
         self.similarity_threshold = similarity_threshold
     
     def get_exact_hash(self, text):
-        """Get MD5 hash for exact duplicate detection"""
         normalized = self._normalize_text(text)
         return hashlib.md5(normalized.encode()).hexdigest()
     
     def _normalize_text(self, text):
-        """Normalize text for comparison"""
         text = text.lower()
-        text = re.sub(r'http\S+|www.\S+', '', text)  # Remove URLs
-        text = re.sub(r'#\w+', '', text)  # Remove hashtags
-        text = re.sub(r'@\w+', '', text)  # Remove mentions
-        text = ' '.join(text.split())  # Normalize whitespace
+        text = re.sub(r'http\S+|www.\S+', '', text)
+        text = re.sub(r'#\w+', '', text)
+        text = re.sub(r'@\w+', '', text)
+        text = ' '.join(text.split())
         return text.strip()
     
     def _tokenize(self, text):
-        """Tokenize text into words"""
         normalized = self._normalize_text(text)
         cleaned = re.sub(r'[^\w\s]', '', normalized)
         words = cleaned.split()
         return [w for w in words if len(w) > 2]
     
     def levenshtein_similarity(self, text1, text2):
-        """Calculate character-level similarity"""
         text1_norm = self._normalize_text(text1)
         text2_norm = self._normalize_text(text2)
         return SequenceMatcher(None, text1_norm, text2_norm).ratio()
     
     def jaccard_similarity(self, text1, text2):
-        """Calculate word-level similarity"""
         words1 = set(self._tokenize(text1))
         words2 = set(self._tokenize(text2))
         
@@ -494,7 +777,6 @@ class DuplicateDetector:
         return len(intersection) / len(union) if union else 0.0
     
     def cosine_similarity(self, text1, text2):
-        """Calculate TF-IDF style similarity"""
         words1 = self._tokenize(text1)
         words2 = self._tokenize(text2)
         
@@ -519,27 +801,25 @@ class DuplicateDetector:
         return dot_product / (magnitude1 * magnitude2)
     
     def combined_similarity(self, text1, text2):
-        """Combine multiple algorithms"""
         lev = self.levenshtein_similarity(text1, text2)
         jac = self.jaccard_similarity(text1, text2)
         cos = self.cosine_similarity(text1, text2)
-        
-        # Weighted average
         return (lev * 0.3) + (jac * 0.35) + (cos * 0.35)
     
     def is_duplicate(self, text, days=7):
-        """Check if text is a duplicate"""
-        # Exact hash check
         exact_hash = self.get_exact_hash(text)
         if self.db.is_similar_content(exact_hash, days):
             return True, {'method': 'exact', 'similarity': 1.0}
         
-        # Fuzzy similarity check
         recent_posts = self.db.get_recent_posts(limit=50)
         cutoff = datetime.now(pytz.UTC) - timedelta(days=days)
         
         for post in recent_posts:
-            posted_at = datetime.fromisoformat(post['posted_at'].replace('Z', '+00:00'))
+            try:
+                posted_at = datetime.fromisoformat(post['posted_at'].replace('Z', '+00:00'))
+            except:
+                continue
+                
             if posted_at < cutoff:
                 continue
             
@@ -554,20 +834,14 @@ class DuplicateDetector:
         
         return False, None
 
-# ═══════════════════════════════════════════════════════════════════════════
-# URL MANAGER
-# ═══════════════════════════════════════════════════════════════════════════
-
 class URLManager:
-    """Manages URL shortening with multiple services"""
+    """Manages URL shortening"""
     
     def __init__(self, bitly_token=None, preferred_service='native'):
         self.bitly_token = bitly_token
         self.preferred_service = preferred_service
-        self.url_cache = {}
     
     def is_valid_url(self, url):
-        """Validate URL format"""
         if not url or not url.startswith(('http://', 'https://')):
             return False
         try:
@@ -577,19 +851,15 @@ class URLManager:
             return False
     
     def sanitize_url(self, url):
-        """Clean URL"""
         return url.strip()
     
     def shorten_url(self, long_url):
-        """Shorten URL with fallback"""
         if not self.is_valid_url(long_url):
             return long_url
         
-        # Use Twitter's native shortening (recommended)
         if self.preferred_service == 'native':
             return long_url
         
-        # Try Bitly
         if self.bitly_token:
             try:
                 response = requests.post(
@@ -606,7 +876,6 @@ class URLManager:
             except:
                 pass
         
-        # Try is.gd
         try:
             response = requests.get(
                 'https://is.gd/create.php',
@@ -618,12 +887,7 @@ class URLManager:
         except:
             pass
         
-        # Fallback to original
         return long_url
-
-# ═══════════════════════════════════════════════════════════════════════════
-# RSS FEED MONITOR
-# ═══════════════════════════════════════════════════════════════════════════
 
 class FeedStatus(Enum):
     HEALTHY = "healthy"
@@ -650,7 +914,6 @@ class RSSFeedMonitor:
         self.max_failures = 5
     
     def validate_feed(self, feed_url):
-        """Validate a single feed"""
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
             response = requests.get(feed_url, headers=headers, timeout=15)
@@ -669,7 +932,6 @@ class RSSFeedMonitor:
             return False, str(e)
     
     def validate_all_feeds(self, feed_urls):
-        """Validate all feeds"""
         logger.info(f"Validating {len(feed_urls)} RSS feeds...")
         
         valid_count = 0
@@ -704,15 +966,12 @@ class RSSFeedMonitor:
         return valid_count
     
     def should_use_feed(self, feed_url):
-        """Check if feed should be used"""
         if feed_url not in self.feed_health:
             return True
-        
         health = self.feed_health[feed_url]
         return health.status != FeedStatus.DEAD
     
     def update_feed_health(self, feed_url, success, error=None):
-        """Update feed health"""
         if feed_url not in self.feed_health:
             return
         
@@ -737,13 +996,8 @@ class RSSFeedMonitor:
                 health.status = FeedStatus.DEGRADED
     
     def get_healthy_feeds(self):
-        """Get list of healthy feeds"""
         return [url for url, health in self.feed_health.items() 
                 if health.status in [FeedStatus.HEALTHY, FeedStatus.DEGRADED]]
-
-# ═══════════════════════════════════════════════════════════════════════════
-# HASHTAG OPTIMIZER
-# ═══════════════════════════════════════════════════════════════════════════
 
 class HashtagOptimizer:
     """Intelligent hashtag selection"""
@@ -758,28 +1012,21 @@ class HashtagOptimizer:
         }
     
     def select_hashtags(self, content, strategy='adaptive', content_type='educational'):
-        """Select hashtags based on strategy"""
-        
-        # Get top performers from database
         top_hashtags = self.db.get_top_hashtags(limit=10)
         top_tags = [h['hashtag'] for h in top_hashtags] if top_hashtags else []
         
         if strategy == 'adaptive' and top_tags:
-            # Use data-driven approach
             selected = top_tags[:2]
         elif strategy == 'aggressive':
-            # Maximum reach
             selected = random.sample(self.hashtag_pools['primary'], 2)
             selected.append(random.choice(self.hashtag_pools['trending']))
         else:
-            # Balanced approach
             selected = [random.choice(self.hashtag_pools['primary'])]
             selected.append(random.choice(self.hashtag_pools['trending']))
         
-        return selected[:2]  # Limit to 2 hashtags
+        return selected[:2]
     
     def optimize_tweet_with_hashtags(self, tweet_text, hashtags, max_length=280):
-        """Add hashtags to tweet"""
         available_space = max_length - len(tweet_text) - 2
         
         hashtag_text = " " + " ".join(hashtags)
@@ -787,7 +1034,6 @@ class HashtagOptimizer:
         if len(hashtag_text) <= available_space:
             return tweet_text + "\n\n" + " ".join(hashtags), hashtags
         
-        # Try with fewer hashtags
         for i in range(len(hashtags), 0, -1):
             subset = hashtags[:i]
             hashtag_text = " " + " ".join(subset)
@@ -796,12 +1042,8 @@ class HashtagOptimizer:
         
         return tweet_text, []
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A/B TESTING FRAMEWORK
-# ═══════════════════════════════════════════════════════════════════════════
-
 class ABTestingFramework:
-    """Simple A/B testing for content variations"""
+    """Simple A/B testing"""
     
     def __init__(self, db_manager):
         self.db = db_manager
@@ -813,13 +1055,11 @@ class ABTestingFramework:
         }
     
     def select_variant(self, experiment_name):
-        """Select random variant"""
         if experiment_name in self.experiments:
             return random.choice(self.experiments[experiment_name])
         return None
     
     def apply_emoji_variant(self, tweet, variant):
-        """Apply emoji variant"""
         crypto_emojis = ["₿", "📊", "📈", "💎", "🚀"]
         
         if variant == 'start':
@@ -829,17 +1069,14 @@ class ABTestingFramework:
         return tweet
     
     def generate_test_plan(self, base_content):
-        """Generate A/B test plan"""
         plan = {}
         for exp_name in self.experiments.keys():
             plan[exp_name] = self.select_variant(exp_name)
         return plan
     
     def apply_variants(self, content, test_plan):
-        """Apply all variants"""
         modified = content
         
-        # Apply emoji
         if 'emoji_placement' in test_plan:
             modified = self.apply_emoji_variant(modified, test_plan['emoji_placement'])
         
@@ -888,7 +1125,6 @@ def fetch_crypto_articles(feed_monitor, feed_urls):
     articles = []
     
     for feed_url in feed_urls:
-        # Check if feed is healthy
         if not feed_monitor.should_use_feed(feed_url):
             logger.debug(f"Skipping unhealthy feed: {feed_url}")
             continue
@@ -920,15 +1156,15 @@ def fetch_crypto_articles(feed_monitor, feed_urls):
     return articles
 
 # ═══════════════════════════════════════════════════════════════════════════
-# MAIN BOT CLASS
+# MAIN BOT CLASS (Enhanced with Quote Posting)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class CompleteCryptoBot:
-    """Complete crypto bot with all enhancements"""
+    """Complete crypto bot with news + quotes"""
     
     def __init__(self):
         logger.info("="*60)
-        logger.info("INITIALIZING COMPLETE CRYPTO BOT")
+        logger.info("INITIALIZING CRYPTO BOT WITH QUOTES")
         logger.info("="*60)
         
         # Initialize all systems
@@ -938,22 +1174,24 @@ class CompleteCryptoBot:
         self.feed_monitor = RSSFeedMonitor(self.db)
         self.hashtag_optimizer = HashtagOptimizer(self.db)
         self.ab_framework = ABTestingFramework(self.db)
+        self.quote_selector = QuoteSelector(self.db)  # NEW
         
         # Validate RSS feeds
         logger.info("\nValidating RSS feeds...")
         self.feed_monitor.validate_all_feeds(RSS_FEEDS)
         
         logger.info("\n✅ All systems initialized")
+        logger.info(f"📰 News posts per day: {DAILY_NEWS_LIMIT}")
+        logger.info(f"💬 Quote posts per day: {DAILY_QUOTE_LIMIT}")
+        logger.info(f"📊 Total posts per day: {DAILY_TOTAL_LIMIT}")
         logger.info("="*60 + "\n")
     
     def should_post_content(self, content, url):
         """Check if content should be posted"""
-        # Check URL
-        if self.db.has_been_posted(url):
+        if url and self.db.has_been_posted(url):
             logger.info(f"❌ URL already posted")
             return False
         
-        # Check duplicates (fuzzy matching)
         is_dup, match_info = self.duplicate_detector.is_duplicate(content, days=7)
         if is_dup:
             logger.info(f"❌ Duplicate detected: {match_info['method']} (similarity: {match_info.get('similarity', 1.0):.2%})")
@@ -961,31 +1199,25 @@ class CompleteCryptoBot:
         
         return True
     
-    def generate_tweet(self, article_title, article_url, content_type):
-        """Generate complete tweet with all enhancements"""
+    def generate_news_tweet(self, article_title, article_url, content_type):
+        """Generate news tweet"""
         
-        # 1. Generate base content
         base_content = generate_crypto_content(article_title, content_type)
         
-        # 2. Apply A/B testing
         test_plan = self.ab_framework.generate_test_plan(base_content)
         modified_content, variants = self.ab_framework.apply_variants(base_content, test_plan)
         
-        # 3. Check for duplicates
         if not self.should_post_content(modified_content, article_url):
             return None
         
-        # 4. Process URL
         final_url = self.url_manager.shorten_url(article_url)
         
-        # 5. Select hashtags
         hashtags = self.hashtag_optimizer.select_hashtags(
             modified_content,
             strategy='adaptive',
             content_type=content_type
         )
         
-        # 6. Construct tweet
         tweet_with_url = f"{modified_content}\n\n{final_url}"
         
         final_tweet, included_hashtags = self.hashtag_optimizer.optimize_tweet_with_hashtags(
@@ -994,50 +1226,91 @@ class CompleteCryptoBot:
         )
         
         return {
+            'post_type': 'news',
             'tweet_text': final_tweet,
             'content_hash': self.duplicate_detector.get_exact_hash(modified_content),
             'url': article_url,
             'content_type': content_type,
             'hashtags': included_hashtags,
-            'test_plan': test_plan
+            'test_plan': test_plan,
+            'quote_category': None
+        }
+    
+    def generate_quote_tweet(self):
+        """Generate inspirational quote tweet"""
+        
+        # Select category and quote
+        category = self.quote_selector.select_category()
+        quote_text = self.quote_selector.select_quote(category)
+        
+        if not quote_text:
+            logger.warning("No quote available")
+            return None
+        
+        # Check for duplicates
+        if not self.should_post_content(quote_text, None):
+            # Try another quote
+            quote_text = random.choice(INSPIRATIONAL_QUOTES[category])
+            if not self.should_post_content(quote_text, None):
+                return None
+        
+        # Format tweet
+        final_tweet, hashtags = self.quote_selector.format_quote_tweet(quote_text, category)
+        
+        return {
+            'post_type': 'quote',
+            'tweet_text': final_tweet,
+            'content_hash': self.duplicate_detector.get_exact_hash(quote_text),
+            'url': None,
+            'content_type': 'inspirational',
+            'hashtags': hashtags,
+            'test_plan': {},
+            'quote_category': category
         }
     
     def post_tweet(self, tweet_data):
         """Post tweet to Twitter"""
-        global last_post_time, daily_posts
+        global last_post_time, daily_news_posts, daily_quote_posts
         
         try:
-            # Post to Twitter
             response = twitter_client.create_tweet(text=tweet_data['tweet_text'])
             tweet_id = response.data['id']
             
             # Log to database
             self.db.log_post(
                 tweet_id=tweet_id,
+                post_type=tweet_data['post_type'],
                 url=tweet_data['url'],
                 content_hash=tweet_data['content_hash'],
                 tweet_text=tweet_data['tweet_text'],
                 content_type=tweet_data['content_type'],
-                hashtags=tweet_data['hashtags']
+                hashtags=tweet_data['hashtags'],
+                quote_category=tweet_data.get('quote_category')
             )
             
             self.db.log_content_hash(tweet_data['content_hash'], tweet_id)
             
-            # Log A/B tests
-            for exp_name, variant in tweet_data['test_plan'].items():
+            # Log A/B tests (for news posts)
+            for exp_name, variant in tweet_data.get('test_plan', {}).items():
                 self.db.log_ab_test(exp_name, variant, tweet_id)
             
-            # Update tracking
+            # Update counters
             last_post_time = datetime.now(pytz.UTC)
-            daily_posts += 1
+            
+            if tweet_data['post_type'] == 'news':
+                daily_news_posts += 1
+            else:
+                daily_quote_posts += 1
             
             logger.info("="*60)
-            logger.info(f"✅ TWEET POSTED SUCCESSFULLY!")
+            logger.info(f"✅ {tweet_data['post_type'].upper()} POSTED SUCCESSFULLY!")
             logger.info(f"Tweet ID: {tweet_id}")
             logger.info(f"URL: https://twitter.com/user/status/{tweet_id}")
             logger.info(f"Content Type: {tweet_data['content_type']}")
+            if tweet_data.get('quote_category'):
+                logger.info(f"Quote Category: {tweet_data['quote_category']}")
             logger.info(f"Hashtags: {tweet_data['hashtags']}")
-            logger.info(f"Daily Posts: {daily_posts}/{DAILY_POST_LIMIT}")
+            logger.info(f"Daily: News {daily_news_posts}/{DAILY_NEWS_LIMIT} | Quotes {daily_quote_posts}/{DAILY_QUOTE_LIMIT}")
             logger.info("="*60)
             
             return True
@@ -1046,41 +1319,55 @@ class CompleteCryptoBot:
             logger.error(f"❌ Error posting tweet: {e}")
             return False
     
-    def run_posting_cycle(self):
+    def run_posting_cycle(self, post_type):
         """Run one posting cycle"""
-        global daily_posts
+        global daily_news_posts, daily_quote_posts
         
         # Check limits
-        if daily_posts >= DAILY_POST_LIMIT:
-            logger.info(f"Daily limit reached ({daily_posts}/{DAILY_POST_LIMIT})")
+        if post_type == 'news' and daily_news_posts >= DAILY_NEWS_LIMIT:
+            logger.info(f"News limit reached ({daily_news_posts}/{DAILY_NEWS_LIMIT})")
+            return False
+        
+        if post_type == 'quote' and daily_quote_posts >= DAILY_QUOTE_LIMIT:
+            logger.info(f"Quote limit reached ({daily_quote_posts}/{DAILY_QUOTE_LIMIT})")
             return False
         
         if not can_post_now():
             return False
         
-        # Select content type
-        content_type = random.choice(CRYPTO_CONTENT_TYPES)
-        logger.info(f"Selected content type: {content_type}")
-        
-        # Fetch articles
-        articles = fetch_crypto_articles(self.feed_monitor, RSS_FEEDS)
-        
-        if not articles:
-            logger.info("No articles available")
-            return False
-        
-        # Try each article
-        for article in articles:
-            tweet_data = self.generate_tweet(
-                article['title'],
-                article['url'],
-                content_type
-            )
+        # Generate appropriate content
+        if post_type == 'quote':
+            logger.info(f"Generating quote post...")
+            tweet_data = self.generate_quote_tweet()
             
             if tweet_data:
                 return self.post_tweet(tweet_data)
+            else:
+                logger.info("Failed to generate quote, trying news instead")
+                post_type = 'news'  # Fallback to news
         
-        logger.info("No suitable articles found")
+        if post_type == 'news':
+            content_type = random.choice(CRYPTO_CONTENT_TYPES)
+            logger.info(f"Selected content type: {content_type}")
+            
+            articles = fetch_crypto_articles(self.feed_monitor, RSS_FEEDS)
+            
+            if not articles:
+                logger.info("No articles available")
+                return False
+            
+            for article in articles:
+                tweet_data = self.generate_news_tweet(
+                    article['title'],
+                    article['url'],
+                    content_type
+                )
+                
+                if tweet_data:
+                    return self.post_tweet(tweet_data)
+            
+            logger.info("No suitable articles found")
+        
         return False
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1088,13 +1375,14 @@ class CompleteCryptoBot:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def reset_daily_counter():
-    """Reset daily post counter"""
-    global daily_posts, last_reset_date
+    """Reset daily post counters"""
+    global daily_news_posts, daily_quote_posts, last_reset_date
     current_date = datetime.now(pytz.UTC).date()
     if current_date > last_reset_date:
-        daily_posts = 0
+        daily_news_posts = 0
+        daily_quote_posts = 0
         last_reset_date = current_date
-        logger.info("Daily post counter reset")
+        logger.info("Daily counters reset")
 
 def can_post_now():
     """Check if enough time has passed"""
@@ -1104,10 +1392,15 @@ def can_post_now():
     time_since_last = datetime.now(pytz.UTC) - last_post_time
     return time_since_last.total_seconds() >= (POST_INTERVAL_MINUTES * 60)
 
-def should_post_now():
-    """Check if current time matches schedule"""
+def get_current_post_type():
+    """Get what type of post should be made now"""
     current_time = datetime.now(pytz.UTC).strftime("%H:%M")
-    return current_time in POSTING_TIMES
+    
+    for scheduled_time, post_type in POSTING_SCHEDULE:
+        if scheduled_time == current_time:
+            return post_type
+    
+    return None
 
 # ═══════════════════════════════════════════════════════════════════════════
 # SCHEDULER
@@ -1116,11 +1409,13 @@ def should_post_now():
 def start_scheduler(bot):
     """Main scheduler loop"""
     logger.info("="*60)
-    logger.info("🚀 STARTING CRYPTO BOT SCHEDULER")
+    logger.info("🚀 STARTING CRYPTO BOT SCHEDULER WITH QUOTES")
     logger.info("="*60)
-    logger.info(f"Daily Limit: {DAILY_POST_LIMIT} posts")
-    logger.info(f"Posting Times: {len(POSTING_TIMES)} times per day")
-    logger.info(f"Post Interval: {POST_INTERVAL_MINUTES} minutes")
+    logger.info(f"📰 News Posts: {DAILY_NEWS_LIMIT}/day")
+    logger.info(f"💬 Quote Posts: {DAILY_QUOTE_LIMIT}/day")
+    logger.info(f"📊 Total Posts: {DAILY_TOTAL_LIMIT}/day")
+    logger.info(f"⏰ Posting Times: {len(POSTING_SCHEDULE)}")
+    logger.info(f"⏱️  Post Interval: {POST_INTERVAL_MINUTES} minutes")
     logger.info("="*60 + "\n")
     
     last_checked_minute = None
@@ -1131,17 +1426,19 @@ def start_scheduler(bot):
             current_time = datetime.now(pytz.UTC)
             current_minute = current_time.strftime("%H:%M")
             
-            # Heartbeat every 5 minutes
+            # Heartbeat
             if (current_time - last_heartbeat).total_seconds() >= 300:
-                logger.info(f"💓 Bot running | Time: {current_minute} UTC | Daily: {daily_posts}/{DAILY_POST_LIMIT}")
+                logger.info(f"💓 Bot running | Time: {current_minute} UTC | News: {daily_news_posts}/{DAILY_NEWS_LIMIT} | Quotes: {daily_quote_posts}/{DAILY_QUOTE_LIMIT}")
                 last_heartbeat = current_time
             
             # Check for posting time
             if current_minute != last_checked_minute:
-                if should_post_now():
-                    logger.info(f"\n⏰ Posting time: {current_minute}")
+                post_type = get_current_post_type()
+                
+                if post_type:
+                    logger.info(f"\n⏰ Posting time: {current_minute} ({post_type})")
                     reset_daily_counter()
-                    bot.run_posting_cycle()
+                    bot.run_posting_cycle(post_type)
                 
                 last_checked_minute = current_minute
             
@@ -1149,7 +1446,7 @@ def start_scheduler(bot):
             
         except KeyboardInterrupt:
             logger.info("\n👋 Shutting down...")
-            logger.info(f"Final stats: {daily_posts} posts today")
+            logger.info(f"Final stats: News {daily_news_posts} | Quotes {daily_quote_posts}")
             break
         except Exception as e:
             logger.error(f"❌ Scheduler error: {e}")
@@ -1164,7 +1461,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        status = f"Crypto Bot: RUNNING\nTime: {datetime.now(pytz.UTC)}\nPosts: {daily_posts}/{DAILY_POST_LIMIT}\n"
+        status = f"Crypto Bot: RUNNING\nTime: {datetime.now(pytz.UTC)}\nNews: {daily_news_posts}/{DAILY_NEWS_LIMIT}\nQuotes: {daily_quote_posts}/{DAILY_QUOTE_LIMIT}\n"
         self.wfile.write(status.encode())
     
     def log_message(self, format, *args):
