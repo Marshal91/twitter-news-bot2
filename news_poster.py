@@ -1,22 +1,21 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-    COMPLETE CRYPTO TWITTER BOT WITH INSPIRATIONAL QUOTES
-    10 News Posts + 4 Quote Posts = 14 Total Posts Per Day
+    COMPLETE CRYPTO + ARSENAL TWITTER BOT
+    10 Crypto News + 4 Quotes + 1 Arsenal FC = 15 Posts Per Day
 ═══════════════════════════════════════════════════════════════════════════════
 
 FEATURES:
 ✅ 10 Crypto News Posts (from RSS feeds)
 ✅ 4 Inspirational Quote Posts (Contrarian, Question, Educational, Bold)
-✅ Smart Rotation System (ensures variety)
+✅ 1 Arsenal FC Post (from official Arsenal feeds)
 ✅ All Previous Enhancements (Database, A/B Testing, etc.)
 
-QUOTE CATEGORIES:
-- Contrarian: Challenge mainstream thinking
-- Question-based: Drive replies and discussion
-- Educational: Provide value and insights
-- Bold/Controversial: High engagement, debate-worthy
+POST BREAKDOWN:
+- Crypto: News, analysis, and market updates
+- Quotes: Inspirational content for engagement
+- Arsenal: Match updates, news, and club content
 
-VERSION: 2.1 - Quote Integration
+VERSION: 2.2 - Arsenal FC Integration
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -58,40 +57,43 @@ TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
 TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
-BITLY_TOKEN = os.getenv("BITLY_TOKEN")  # Optional
+BITLY_TOKEN = os.getenv("BITLY_TOKEN")
 
 # Database
 DATABASE_PATH = "crypto_bot_data.db"
 
-# NEW: Posting Limits
-DAILY_NEWS_LIMIT = 10        # 10 crypto news posts
-DAILY_QUOTE_LIMIT = 4        # 4 inspirational quotes
-DAILY_TOTAL_LIMIT = 14       # Total posts per day
+# Posting Limits
+DAILY_NEWS_LIMIT = 10        # Crypto news
+DAILY_QUOTE_LIMIT = 4        # Inspirational quotes
+DAILY_ARSENAL_LIMIT = 1      # Arsenal FC content
+DAILY_TOTAL_LIMIT = 15       # Total posts per day
 POST_INTERVAL_MINUTES = 90
 
 # Tracking
 last_post_time = None
 daily_news_posts = 0
 daily_quote_posts = 0
+daily_arsenal_posts = 0
 last_reset_date = datetime.now(pytz.UTC).date()
 
-# NEW: Posting Schedule with Post Types
+# Posting Schedule with Post Types
 # Format: (time, post_type)
 POSTING_SCHEDULE = [
-    ("03:00", "news"),      # 1. News
-    ("04:32", "quote"),     # 2. Quote
-    ("06:04", "news"),      # 3. News
-    ("07:36", "news"),      # 4. News
-    ("09:08", "quote"),     # 5. Quote
-    ("11:40", "news"),      # 6. News
-    ("13:12", "news"),      # 7. News
-    ("14:44", "quote"),     # 8. Quote
-    ("16:16", "news"),      # 9. News
-    ("17:48", "news"),      # 10. News
-    ("19:20", "quote"),     # 11. Quote
-    ("20:52", "news"),      # 12. News
-    ("22:34", "news"),      # 13. News
-    ("00:38", "news")       # 14. News
+    ("03:00", "news"),      # 1. Crypto News
+    ("05:00", "quote"),     # 2. Quote
+    ("07:00", "news"),      # 3. Crypto News
+    ("09:00", "arsenal"),   # 4. Arsenal FC ⚽
+    ("11:00", "quote"),     # 5. Quote
+    ("13:00", "news"),      # 6. Crypto News
+    ("15:00", "news"),      # 7. Crypto News
+    ("17:00", "quote"),     # 8. Quote
+    ("19:00", "news"),      # 9. Crypto News
+    ("20:00", "news"),      # 10. Crypto News
+    ("21:00", "news"),      # 11. Crypto News
+    ("22:00", "quote"),     # 12. Quote
+    ("23:00", "news"),      # 13. Crypto News
+    ("01:00", "news"),      # 14. Crypto News
+    ("02:00", "news")       # 15. Crypto News
 ]
 
 # Content Types
@@ -100,16 +102,28 @@ CRYPTO_CONTENT_TYPES = [
     "question", "hot_take", "breakdown"
 ]
 
-# NEW: Quote Categories
+ARSENAL_CONTENT_TYPES = [
+    "match_update", "team_news", "fan_reaction", "analysis"
+]
+
+# Quote Categories
 QUOTE_CATEGORIES = ["contrarian", "question", "educational", "bold"]
 
 # RSS Feeds
-RSS_FEEDS = [
+CRYPTO_RSS_FEEDS = [
     "https://cointelegraph.com/rss",
     "https://www.coindesk.com/arc/outboundfeeds/rss/",
     "https://crypto.news/feed/",
     "https://decrypt.co/feed",
     "https://bitcoinmagazine.com/.rss/full/"
+]
+
+# Arsenal FC RSS Feeds
+ARSENAL_RSS_FEEDS = [
+    "https://www.arsenal.com/rss.xml",                          # Official Arsenal
+    "https://www.skysports.com/rss/12040",                      # Sky Sports Arsenal
+    "https://www.espn.com/espn/rss/soccer/team/_/id/359",      # ESPN Arsenal
+    "https://theathletic.com/team/arsenal/feed/",               # The Athletic (if accessible)
 ]
 
 # Duplicate Detection
@@ -245,7 +259,7 @@ twitter_client = tweepy.Client(
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DATABASE MANAGER (Enhanced with Quote Tracking)
+# DATABASE MANAGER (Enhanced with Arsenal Tracking)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class DatabaseManager:
@@ -275,7 +289,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             c = conn.cursor()
             
-            # Posts table (modified to include post_type)
+            # Posts table (includes all post types)
             c.execute('''
                 CREATE TABLE IF NOT EXISTS posts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -336,7 +350,7 @@ class DatabaseManager:
                 )
             ''')
             
-            # NEW: Quote performance table
+            # Quote performance table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS quote_performance (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -350,12 +364,13 @@ class DatabaseManager:
                 )
             ''')
             
-            # RSS sources table
+            # RSS sources table (for both crypto and Arsenal)
             c.execute('''
                 CREATE TABLE IF NOT EXISTS rss_sources (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     url TEXT UNIQUE NOT NULL,
                     feed_name TEXT,
+                    feed_type TEXT,
                     last_fetched TIMESTAMP,
                     success_count INTEGER DEFAULT 0,
                     failure_count INTEGER DEFAULT 0,
@@ -419,17 +434,28 @@ class DatabaseManager:
             except sqlite3.IntegrityError:
                 pass
     
-    def get_recent_posts(self, limit=50):
-        """Get recent posts"""
+    def get_recent_posts(self, limit=50, post_type=None):
+        """Get recent posts, optionally filtered by type"""
         with self.get_connection() as conn:
             c = conn.cursor()
-            c.execute('''
-                SELECT tweet_id, tweet_text, content_type, post_type, posted_at,
-                       likes, retweets, replies, engagement_rate
-                FROM posts
-                ORDER BY posted_at DESC
-                LIMIT ?
-            ''', (limit,))
+            
+            if post_type:
+                c.execute('''
+                    SELECT tweet_id, tweet_text, content_type, post_type, posted_at,
+                           likes, retweets, replies, engagement_rate
+                    FROM posts
+                    WHERE post_type = ?
+                    ORDER BY posted_at DESC
+                    LIMIT ?
+                ''', (post_type, limit))
+            else:
+                c.execute('''
+                    SELECT tweet_id, tweet_text, content_type, post_type, posted_at,
+                           likes, retweets, replies, engagement_rate
+                    FROM posts
+                    ORDER BY posted_at DESC
+                    LIMIT ?
+                ''', (limit,))
             
             results = []
             for row in c.fetchall():
@@ -539,7 +565,7 @@ class DatabaseManager:
                 })
             return results
     
-    def update_rss_source(self, url, feed_name, success=True):
+    def update_rss_source(self, url, feed_name, feed_type, success=True):
         """Update RSS source statistics"""
         with self.get_connection() as conn:
             c = conn.cursor()
@@ -561,10 +587,10 @@ class DatabaseManager:
                 ''', (now, success_count, failure_count, success_rate, url))
             else:
                 c.execute('''
-                    INSERT INTO rss_sources (url, feed_name, last_fetched, 
+                    INSERT INTO rss_sources (url, feed_name, feed_type, last_fetched, 
                                            success_count, failure_count, success_rate)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (url, feed_name, now, 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (url, feed_name, feed_type, now, 
                      1 if success else 0, 
                      0 if success else 1, 
                      1.0 if success else 0.0))
@@ -637,7 +663,7 @@ class DatabaseManager:
             return results
 
 # ═══════════════════════════════════════════════════════════════════════════
-# QUOTE SELECTOR (NEW)
+# QUOTE SELECTOR
 # ═══════════════════════════════════════════════════════════════════════════
 
 class QuoteSelector:
@@ -645,8 +671,8 @@ class QuoteSelector:
     
     def __init__(self, db_manager):
         self.db = db_manager
-        self.last_categories = []  # Track last used categories
-        self.max_history = 4  # Don't repeat category within last 4 quotes
+        self.last_categories = []
+        self.max_history = 4
     
     def select_category(self):
         """Select quote category with smart rotation"""
@@ -655,10 +681,8 @@ class QuoteSelector:
         if not available:
             available = QUOTE_CATEGORIES
         
-        # Weight by performance (if we have data)
         selected = random.choice(available)
         
-        # Update history
         self.last_categories.append(selected)
         if len(self.last_categories) > self.max_history:
             self.last_categories.pop(0)
@@ -672,19 +696,16 @@ class QuoteSelector:
         if not quotes:
             return None
         
-        # Get performance data
         top_quotes = self.db.get_top_quotes_by_category(category, limit=3)
         
-        if top_quotes and random.random() < 0.7:  # 70% use top performers
+        if top_quotes and random.random() < 0.7:
             return random.choice([q['quote_text'] for q in top_quotes])
         else:
-            # Use fresh quote
             return random.choice(quotes)
     
     def format_quote_tweet(self, quote_text, category):
         """Format quote into tweet with appropriate styling"""
         
-        # Add category-specific emojis
         category_emojis = {
             'contrarian': '🎯',
             'question': '💭',
@@ -694,21 +715,16 @@ class QuoteSelector:
         
         emoji = category_emojis.get(category, '💡')
         
-        # For questions, keep as-is
         if category == 'question':
             formatted = f"{emoji} {quote_text}"
         else:
-            # Add quotes for statements
             formatted = f'{emoji} "{quote_text}"'
         
-        # Add hashtags
         hashtags = self._get_quote_hashtags(category)
         
-        # Check length and adjust
         if len(formatted) + len(" ".join(hashtags)) + 2 <= 280:
             formatted += "\n\n" + " ".join(hashtags)
         else:
-            # Use fewer hashtags if needed
             formatted += "\n\n" + " ".join(hashtags[:1])
         
         return formatted, hashtags
@@ -726,12 +742,65 @@ class QuoteSelector:
         
         specific = category_tags.get(category, [])
         
-        # Return 1-2 tags
         return [random.choice(base_tags)] + ([random.choice(specific)] if specific else [])
 
 # ═══════════════════════════════════════════════════════════════════════════
-# REST OF THE COMPONENTS (Duplicate Detector, URL Manager, etc.)
-# These remain the same as before...
+# ARSENAL CONTENT GENERATOR (NEW)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ArsenalContentGenerator:
+    """Generates engaging Arsenal FC content"""
+    
+    def __init__(self):
+        self.arsenal_emojis = ["⚽", "🔴", "⚪", "🏆", "👑", "🔵"]
+        self.arsenal_hashtags = [
+            "#Arsenal", "#AFC", "#Gunners", "#COYG", 
+            "#ArsenalFC", "#WeAreTheArsenal", "#PremierLeague"
+        ]
+    
+    def generate_arsenal_tweet(self, title, url, content_type="team_news"):
+        """Generate Arsenal tweet content"""
+        
+        # Shorten title if too long
+        if len(title) > 150:
+            title = title[:147] + "..."
+        
+        # Content type specific formatting
+        if content_type == "match_update":
+            templates = [
+                f"⚽ {title}",
+                f"🔴 Match Update: {title}",
+                f"👑 {title}"
+            ]
+        elif content_type == "team_news":
+            templates = [
+                f"🔴⚪ {title}",
+                f"Arsenal News: {title}",
+                f"⚽ {title}"
+            ]
+        elif content_type == "analysis":
+            templates = [
+                f"📊 {title}",
+                f"⚽ Analysis: {title}",
+                f"🔴 {title}"
+            ]
+        else:  # fan_reaction or general
+            templates = [
+                f"⚽ {title}",
+                f"🔴⚪ {title}",
+                f"Gunners: {title}"
+            ]
+        
+        base_content = random.choice(templates)
+        
+        # Select hashtags (2-3 for Arsenal content)
+        selected_hashtags = random.sample(self.arsenal_hashtags, k=min(2, len(self.arsenal_hashtags)))
+        
+        return base_content, selected_hashtags
+
+# ═══════════════════════════════════════════════════════════════════════════
+# REST OF COMPONENTS (Duplicate Detector, URL Manager, etc.)
+# Same as before...
 # ═══════════════════════════════════════════════════════════════════════════
 
 class DuplicateDetector:
@@ -806,12 +875,13 @@ class DuplicateDetector:
         cos = self.cosine_similarity(text1, text2)
         return (lev * 0.3) + (jac * 0.35) + (cos * 0.35)
     
-    def is_duplicate(self, text, days=7):
+    def is_duplicate(self, text, days=7, post_type=None):
+        """Check for duplicates, optionally filtering by post type"""
         exact_hash = self.get_exact_hash(text)
         if self.db.is_similar_content(exact_hash, days):
             return True, {'method': 'exact', 'similarity': 1.0}
         
-        recent_posts = self.db.get_recent_posts(limit=50)
+        recent_posts = self.db.get_recent_posts(limit=50, post_type=post_type)
         cutoff = datetime.now(pytz.UTC) - timedelta(days=days)
         
         for post in recent_posts:
@@ -913,7 +983,7 @@ class RSSFeedMonitor:
         self.feed_health = {}
         self.max_failures = 5
     
-    def validate_feed(self, feed_url):
+    def validate_feed(self, feed_url, feed_type="crypto"):
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
             response = requests.get(feed_url, headers=headers, timeout=15)
@@ -926,17 +996,20 @@ class RSSFeedMonitor:
             
             return True, {
                 'feed_name': feed.feed.get('title', 'Unknown'),
-                'entry_count': len(feed.entries)
+                'entry_count': len(feed.entries),
+                'feed_type': feed_type
             }
         except Exception as e:
             return False, str(e)
     
-    def validate_all_feeds(self, feed_urls):
-        logger.info(f"Validating {len(feed_urls)} RSS feeds...")
+    def validate_all_feeds(self, crypto_feeds, arsenal_feeds):
+        logger.info(f"Validating {len(crypto_feeds)} crypto + {len(arsenal_feeds)} Arsenal feeds...")
         
         valid_count = 0
-        for feed_url in feed_urls:
-            is_valid, details = self.validate_feed(feed_url)
+        
+        # Validate crypto feeds
+        for feed_url in crypto_feeds:
+            is_valid, details = self.validate_feed(feed_url, "crypto")
             
             if is_valid:
                 valid_count += 1
@@ -949,7 +1022,7 @@ class RSSFeedMonitor:
                     last_check=datetime.now(pytz.UTC),
                     error_message=None
                 )
-                logger.info(f"✅ {details['feed_name']}: {details['entry_count']} entries")
+                logger.info(f"✅ Crypto: {details['feed_name']}: {details['entry_count']} entries")
             else:
                 self.feed_health[feed_url] = FeedHealth(
                     url=feed_url,
@@ -960,9 +1033,38 @@ class RSSFeedMonitor:
                     last_check=datetime.now(pytz.UTC),
                     error_message=details
                 )
-                logger.warning(f"❌ {feed_url}: {details}")
+                logger.warning(f"❌ Crypto: {feed_url}: {details}")
         
-        logger.info(f"Validation complete: {valid_count}/{len(feed_urls)} healthy")
+        # Validate Arsenal feeds
+        for feed_url in arsenal_feeds:
+            is_valid, details = self.validate_feed(feed_url, "arsenal")
+            
+            if is_valid:
+                valid_count += 1
+                self.feed_health[feed_url] = FeedHealth(
+                    url=feed_url,
+                    name=details['feed_name'],
+                    status=FeedStatus.HEALTHY,
+                    success_rate=1.0,
+                    consecutive_failures=0,
+                    last_check=datetime.now(pytz.UTC),
+                    error_message=None
+                )
+                logger.info(f"⚽ Arsenal: {details['feed_name']}: {details['entry_count']} entries")
+            else:
+                self.feed_health[feed_url] = FeedHealth(
+                    url=feed_url,
+                    name='Unknown',
+                    status=FeedStatus.UNHEALTHY,
+                    success_rate=0.0,
+                    consecutive_failures=1,
+                    last_check=datetime.now(pytz.UTC),
+                    error_message=details
+                )
+                logger.warning(f"❌ Arsenal: {feed_url}: {details}")
+        
+        total_feeds = len(crypto_feeds) + len(arsenal_feeds)
+        logger.info(f"Validation complete: {valid_count}/{total_feeds} healthy")
         return valid_count
     
     def should_use_feed(self, feed_url):
@@ -971,7 +1073,7 @@ class RSSFeedMonitor:
         health = self.feed_health[feed_url]
         return health.status != FeedStatus.DEAD
     
-    def update_feed_health(self, feed_url, success, error=None):
+    def update_feed_health(self, feed_url, feed_type, success, error=None):
         if feed_url not in self.feed_health:
             return
         
@@ -983,6 +1085,9 @@ class RSSFeedMonitor:
             health.success_rate = min(1.0, health.success_rate + 0.1)
             health.status = FeedStatus.HEALTHY
             health.error_message = None
+            
+            # Update database
+            self.db.update_rss_source(feed_url, health.name, feed_type, success=True)
         else:
             health.consecutive_failures += 1
             health.success_rate = max(0.0, health.success_rate - 0.1)
@@ -994,10 +1099,30 @@ class RSSFeedMonitor:
                 health.status = FeedStatus.UNHEALTHY
             elif health.success_rate < 0.7:
                 health.status = FeedStatus.DEGRADED
+            
+            # Update database
+            self.db.update_rss_source(feed_url, health.name, feed_type, success=False)
     
-    def get_healthy_feeds(self):
-        return [url for url, health in self.feed_health.items() 
-                if health.status in [FeedStatus.HEALTHY, FeedStatus.DEGRADED]]
+    def get_healthy_feeds(self, feed_type=None):
+        """Get healthy feeds, optionally filtered by type"""
+        healthy = [url for url, health in self.feed_health.items() 
+                   if health.status in [FeedStatus.HEALTHY, FeedStatus.DEGRADED]]
+        
+        if not feed_type:
+            return healthy
+        
+        # Filter by feed type if specified
+        filtered = []
+        for url in healthy:
+            # Check database for feed type
+            # For simplicity, we'll return all healthy feeds if type not in URL
+            if feed_type == "arsenal" and ("arsenal" in url.lower() or "skysports" in url.lower()):
+                filtered.append(url)
+            elif feed_type == "crypto" and feed_type != "arsenal":
+                if not ("arsenal" in url.lower() or "skysports" in url.lower()):
+                    filtered.append(url)
+        
+        return filtered if filtered else healthy
 
 class HashtagOptimizer:
     """Intelligent hashtag selection"""
@@ -1120,7 +1245,7 @@ def generate_crypto_content(title, content_type):
 # RSS FEED FETCHING
 # ═══════════════════════════════════════════════════════════════════════════
 
-def fetch_crypto_articles(feed_monitor, feed_urls):
+def fetch_articles(feed_monitor, feed_urls, feed_type="crypto"):
     """Fetch articles from healthy feeds"""
     articles = []
     
@@ -1137,34 +1262,35 @@ def fetch_crypto_articles(feed_monitor, feed_urls):
             feed = feedparser.parse(response.content)
             
             if feed.entries:
-                feed_monitor.update_feed_health(feed_url, success=True)
+                feed_monitor.update_feed_health(feed_url, feed_type, success=True)
                 
                 for entry in feed.entries[:5]:
                     articles.append({
                         'title': entry.title,
                         'url': entry.link,
-                        'source_feed': feed_url
+                        'source_feed': feed_url,
+                        'feed_type': feed_type
                     })
             else:
-                feed_monitor.update_feed_health(feed_url, success=False, error='No entries')
+                feed_monitor.update_feed_health(feed_url, feed_type, success=False, error='No entries')
         
         except Exception as e:
-            feed_monitor.update_feed_health(feed_url, success=False, error=str(e))
+            feed_monitor.update_feed_health(feed_url, feed_type, success=False, error=str(e))
             logger.warning(f"Error fetching {feed_url}: {e}")
     
-    logger.info(f"Fetched {len(articles)} articles from feeds")
+    logger.info(f"Fetched {len(articles)} {feed_type} articles from feeds")
     return articles
 
 # ═══════════════════════════════════════════════════════════════════════════
-# MAIN BOT CLASS (Enhanced with Quote Posting)
+# MAIN BOT CLASS (Enhanced with Arsenal)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class CompleteCryptoBot:
-    """Complete crypto bot with news + quotes"""
+class CompleteCryptoArsenalBot:
+    """Complete bot with crypto news + quotes + Arsenal FC"""
     
     def __init__(self):
         logger.info("="*60)
-        logger.info("INITIALIZING CRYPTO BOT WITH QUOTES")
+        logger.info("INITIALIZING CRYPTO + ARSENAL BOT")
         logger.info("="*60)
         
         # Initialize all systems
@@ -1174,25 +1300,27 @@ class CompleteCryptoBot:
         self.feed_monitor = RSSFeedMonitor(self.db)
         self.hashtag_optimizer = HashtagOptimizer(self.db)
         self.ab_framework = ABTestingFramework(self.db)
-        self.quote_selector = QuoteSelector(self.db)  # NEW
+        self.quote_selector = QuoteSelector(self.db)
+        self.arsenal_generator = ArsenalContentGenerator()  # NEW
         
-        # Validate RSS feeds
+        # Validate all RSS feeds
         logger.info("\nValidating RSS feeds...")
-        self.feed_monitor.validate_all_feeds(RSS_FEEDS)
+        self.feed_monitor.validate_all_feeds(CRYPTO_RSS_FEEDS, ARSENAL_RSS_FEEDS)
         
         logger.info("\n✅ All systems initialized")
-        logger.info(f"📰 News posts per day: {DAILY_NEWS_LIMIT}")
-        logger.info(f"💬 Quote posts per day: {DAILY_QUOTE_LIMIT}")
-        logger.info(f"📊 Total posts per day: {DAILY_TOTAL_LIMIT}")
+        logger.info(f"📰 Crypto news: {DAILY_NEWS_LIMIT}/day")
+        logger.info(f"💬 Quotes: {DAILY_QUOTE_LIMIT}/day")
+        logger.info(f"⚽ Arsenal: {DAILY_ARSENAL_LIMIT}/day")
+        logger.info(f"📊 Total: {DAILY_TOTAL_LIMIT}/day")
         logger.info("="*60 + "\n")
     
-    def should_post_content(self, content, url):
+    def should_post_content(self, content, url, post_type=None):
         """Check if content should be posted"""
         if url and self.db.has_been_posted(url):
             logger.info(f"❌ URL already posted")
             return False
         
-        is_dup, match_info = self.duplicate_detector.is_duplicate(content, days=7)
+        is_dup, match_info = self.duplicate_detector.is_duplicate(content, days=7, post_type=post_type)
         if is_dup:
             logger.info(f"❌ Duplicate detected: {match_info['method']} (similarity: {match_info.get('similarity', 1.0):.2%})")
             return False
@@ -1200,14 +1328,14 @@ class CompleteCryptoBot:
         return True
     
     def generate_news_tweet(self, article_title, article_url, content_type):
-        """Generate news tweet"""
+        """Generate crypto news tweet"""
         
         base_content = generate_crypto_content(article_title, content_type)
         
         test_plan = self.ab_framework.generate_test_plan(base_content)
         modified_content, variants = self.ab_framework.apply_variants(base_content, test_plan)
         
-        if not self.should_post_content(modified_content, article_url):
+        if not self.should_post_content(modified_content, article_url, "news"):
             return None
         
         final_url = self.url_manager.shorten_url(article_url)
@@ -1239,7 +1367,6 @@ class CompleteCryptoBot:
     def generate_quote_tweet(self):
         """Generate inspirational quote tweet"""
         
-        # Select category and quote
         category = self.quote_selector.select_category()
         quote_text = self.quote_selector.select_quote(category)
         
@@ -1247,14 +1374,11 @@ class CompleteCryptoBot:
             logger.warning("No quote available")
             return None
         
-        # Check for duplicates
-        if not self.should_post_content(quote_text, None):
-            # Try another quote
+        if not self.should_post_content(quote_text, None, "quote"):
             quote_text = random.choice(INSPIRATIONAL_QUOTES[category])
-            if not self.should_post_content(quote_text, None):
+            if not self.should_post_content(quote_text, None, "quote"):
                 return None
         
-        # Format tweet
         final_tweet, hashtags = self.quote_selector.format_quote_tweet(quote_text, category)
         
         return {
@@ -1268,9 +1392,45 @@ class CompleteCryptoBot:
             'quote_category': category
         }
     
+    def generate_arsenal_tweet(self, article_title, article_url, content_type="team_news"):
+        """Generate Arsenal FC tweet (NEW)"""
+        
+        # Generate Arsenal content
+        base_content, hashtags = self.arsenal_generator.generate_arsenal_tweet(
+            article_title, article_url, content_type
+        )
+        
+        # Check for duplicates (within Arsenal posts)
+        if not self.should_post_content(base_content, article_url, "arsenal"):
+            return None
+        
+        # Shorten URL
+        final_url = self.url_manager.shorten_url(article_url)
+        
+        # Construct tweet
+        tweet_with_url = f"{base_content}\n\n{final_url}"
+        
+        # Optimize with hashtags
+        final_tweet, included_hashtags = self.hashtag_optimizer.optimize_tweet_with_hashtags(
+            tweet_with_url,
+            hashtags,
+            max_length=280
+        )
+        
+        return {
+            'post_type': 'arsenal',
+            'tweet_text': final_tweet,
+            'content_hash': self.duplicate_detector.get_exact_hash(base_content),
+            'url': article_url,
+            'content_type': content_type,
+            'hashtags': included_hashtags,
+            'test_plan': {},
+            'quote_category': None
+        }
+    
     def post_tweet(self, tweet_data):
         """Post tweet to Twitter"""
-        global last_post_time, daily_news_posts, daily_quote_posts
+        global last_post_time, daily_news_posts, daily_quote_posts, daily_arsenal_posts
         
         try:
             response = twitter_client.create_tweet(text=tweet_data['tweet_text'])
@@ -1290,7 +1450,7 @@ class CompleteCryptoBot:
             
             self.db.log_content_hash(tweet_data['content_hash'], tweet_id)
             
-            # Log A/B tests (for news posts)
+            # Log A/B tests
             for exp_name, variant in tweet_data.get('test_plan', {}).items():
                 self.db.log_ab_test(exp_name, variant, tweet_id)
             
@@ -1299,18 +1459,27 @@ class CompleteCryptoBot:
             
             if tweet_data['post_type'] == 'news':
                 daily_news_posts += 1
-            else:
+            elif tweet_data['post_type'] == 'quote':
                 daily_quote_posts += 1
+            elif tweet_data['post_type'] == 'arsenal':
+                daily_arsenal_posts += 1
+            
+            # Log output
+            post_emoji = {
+                'news': '📰',
+                'quote': '💬',
+                'arsenal': '⚽'
+            }.get(tweet_data['post_type'], '📝')
             
             logger.info("="*60)
-            logger.info(f"✅ {tweet_data['post_type'].upper()} POSTED SUCCESSFULLY!")
+            logger.info(f"✅ {post_emoji} {tweet_data['post_type'].upper()} POSTED!")
             logger.info(f"Tweet ID: {tweet_id}")
             logger.info(f"URL: https://twitter.com/user/status/{tweet_id}")
             logger.info(f"Content Type: {tweet_data['content_type']}")
             if tweet_data.get('quote_category'):
                 logger.info(f"Quote Category: {tweet_data['quote_category']}")
             logger.info(f"Hashtags: {tweet_data['hashtags']}")
-            logger.info(f"Daily: News {daily_news_posts}/{DAILY_NEWS_LIMIT} | Quotes {daily_quote_posts}/{DAILY_QUOTE_LIMIT}")
+            logger.info(f"Daily: News {daily_news_posts}/{DAILY_NEWS_LIMIT} | Quotes {daily_quote_posts}/{DAILY_QUOTE_LIMIT} | Arsenal {daily_arsenal_posts}/{DAILY_ARSENAL_LIMIT}")
             logger.info("="*60)
             
             return True
@@ -1321,7 +1490,7 @@ class CompleteCryptoBot:
     
     def run_posting_cycle(self, post_type):
         """Run one posting cycle"""
-        global daily_news_posts, daily_quote_posts
+        global daily_news_posts, daily_quote_posts, daily_arsenal_posts
         
         # Check limits
         if post_type == 'news' and daily_news_posts >= DAILY_NEWS_LIMIT:
@@ -1330,6 +1499,10 @@ class CompleteCryptoBot:
         
         if post_type == 'quote' and daily_quote_posts >= DAILY_QUOTE_LIMIT:
             logger.info(f"Quote limit reached ({daily_quote_posts}/{DAILY_QUOTE_LIMIT})")
+            return False
+        
+        if post_type == 'arsenal' and daily_arsenal_posts >= DAILY_ARSENAL_LIMIT:
+            logger.info(f"Arsenal limit reached ({daily_arsenal_posts}/{DAILY_ARSENAL_LIMIT})")
             return False
         
         if not can_post_now():
@@ -1343,17 +1516,42 @@ class CompleteCryptoBot:
             if tweet_data:
                 return self.post_tweet(tweet_data)
             else:
-                logger.info("Failed to generate quote, trying news instead")
-                post_type = 'news'  # Fallback to news
+                logger.info("Failed to generate quote")
+                return False
         
-        if post_type == 'news':
+        elif post_type == 'arsenal':
+            logger.info(f"⚽ Generating Arsenal post...")
+            
+            # Fetch Arsenal articles
+            articles = fetch_articles(self.feed_monitor, ARSENAL_RSS_FEEDS, "arsenal")
+            
+            if not articles:
+                logger.info("No Arsenal articles available")
+                return False
+            
+            # Try each article
+            for article in articles:
+                content_type = random.choice(ARSENAL_CONTENT_TYPES)
+                tweet_data = self.generate_arsenal_tweet(
+                    article['title'],
+                    article['url'],
+                    content_type
+                )
+                
+                if tweet_data:
+                    return self.post_tweet(tweet_data)
+            
+            logger.info("No suitable Arsenal articles found")
+            return False
+        
+        elif post_type == 'news':
             content_type = random.choice(CRYPTO_CONTENT_TYPES)
             logger.info(f"Selected content type: {content_type}")
             
-            articles = fetch_crypto_articles(self.feed_monitor, RSS_FEEDS)
+            articles = fetch_articles(self.feed_monitor, CRYPTO_RSS_FEEDS, "crypto")
             
             if not articles:
-                logger.info("No articles available")
+                logger.info("No crypto articles available")
                 return False
             
             for article in articles:
@@ -1376,11 +1574,12 @@ class CompleteCryptoBot:
 
 def reset_daily_counter():
     """Reset daily post counters"""
-    global daily_news_posts, daily_quote_posts, last_reset_date
+    global daily_news_posts, daily_quote_posts, daily_arsenal_posts, last_reset_date
     current_date = datetime.now(pytz.UTC).date()
     if current_date > last_reset_date:
         daily_news_posts = 0
         daily_quote_posts = 0
+        daily_arsenal_posts = 0
         last_reset_date = current_date
         logger.info("Daily counters reset")
 
@@ -1409,11 +1608,12 @@ def get_current_post_type():
 def start_scheduler(bot):
     """Main scheduler loop"""
     logger.info("="*60)
-    logger.info("🚀 STARTING CRYPTO BOT SCHEDULER WITH QUOTES")
+    logger.info("🚀 STARTING CRYPTO + ARSENAL BOT SCHEDULER")
     logger.info("="*60)
-    logger.info(f"📰 News Posts: {DAILY_NEWS_LIMIT}/day")
-    logger.info(f"💬 Quote Posts: {DAILY_QUOTE_LIMIT}/day")
-    logger.info(f"📊 Total Posts: {DAILY_TOTAL_LIMIT}/day")
+    logger.info(f"📰 Crypto News: {DAILY_NEWS_LIMIT}/day")
+    logger.info(f"💬 Quotes: {DAILY_QUOTE_LIMIT}/day")
+    logger.info(f"⚽ Arsenal FC: {DAILY_ARSENAL_LIMIT}/day")
+    logger.info(f"📊 Total: {DAILY_TOTAL_LIMIT}/day")
     logger.info(f"⏰ Posting Times: {len(POSTING_SCHEDULE)}")
     logger.info(f"⏱️  Post Interval: {POST_INTERVAL_MINUTES} minutes")
     logger.info("="*60 + "\n")
@@ -1428,7 +1628,7 @@ def start_scheduler(bot):
             
             # Heartbeat
             if (current_time - last_heartbeat).total_seconds() >= 300:
-                logger.info(f"💓 Bot running | Time: {current_minute} UTC | News: {daily_news_posts}/{DAILY_NEWS_LIMIT} | Quotes: {daily_quote_posts}/{DAILY_QUOTE_LIMIT}")
+                logger.info(f"💓 Bot running | {current_minute} UTC | News: {daily_news_posts}/{DAILY_NEWS_LIMIT} | Quotes: {daily_quote_posts}/{DAILY_QUOTE_LIMIT} | Arsenal: {daily_arsenal_posts}/{DAILY_ARSENAL_LIMIT}")
                 last_heartbeat = current_time
             
             # Check for posting time
@@ -1436,7 +1636,8 @@ def start_scheduler(bot):
                 post_type = get_current_post_type()
                 
                 if post_type:
-                    logger.info(f"\n⏰ Posting time: {current_minute} ({post_type})")
+                    post_emoji = {'news': '📰', 'quote': '💬', 'arsenal': '⚽'}.get(post_type, '📝')
+                    logger.info(f"\n⏰ Posting time: {current_minute} ({post_emoji} {post_type})")
                     reset_daily_counter()
                     bot.run_posting_cycle(post_type)
                 
@@ -1446,26 +1647,35 @@ def start_scheduler(bot):
             
         except KeyboardInterrupt:
             logger.info("\n👋 Shutting down...")
-            logger.info(f"Final stats: News {daily_news_posts} | Quotes {daily_quote_posts}")
+            logger.info(f"Final stats: News {daily_news_posts} | Quotes {daily_quote_posts} | Arsenal {daily_arsenal_posts}")
             break
         except Exception as e:
             logger.error(f"❌ Scheduler error: {e}")
             time.sleep(60)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# HEALTH CHECK SERVER
+# HEALTH CHECK SERVER (Fixed for UptimeRobot)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_HEAD(self):
+    def do_GET(self):
+        """Handle GET requests from monitoring services"""
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
-        self.send_header('Content-length', '100')
+        self.send_header('Content-Length', '150')
         self.end_headers()
-        status = f"Crypto Bot: RUNNING\nTime: {datetime.now(pytz.UTC)}\nNews: {daily_news_posts}/{DAILY_NEWS_LIMIT}\nQuotes: {daily_quote_posts}/{DAILY_QUOTE_LIMIT}\n"
+        status = f"Crypto+Arsenal Bot: RUNNING\nTime: {datetime.now(pytz.UTC)}\nNews: {daily_news_posts}/{DAILY_NEWS_LIMIT}\nQuotes: {daily_quote_posts}/{DAILY_QUOTE_LIMIT}\nArsenal: {daily_arsenal_posts}/{DAILY_ARSENAL_LIMIT}\n"
         self.wfile.write(status.encode())
     
+    def do_HEAD(self):
+        """Handle HEAD requests from monitoring services like UptimeRobot"""
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.send_header('Content-Length', '150')
+        self.end_headers()
+    
     def log_message(self, format, *args):
+        """Suppress access logs"""
         pass
 
 def start_health_server():
@@ -1489,7 +1699,7 @@ if __name__ == "__main__":
         logger.info(f"✅ Authenticated as @{me.screen_name}")
         
         # Initialize bot
-        bot = CompleteCryptoBot()
+        bot = CompleteCryptoArsenalBot()
         
         # Start health server
         health_thread = threading.Thread(target=start_health_server, daemon=True)
@@ -1504,4 +1714,3 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"\n❌ CRITICAL ERROR: {e}")
         exit(1)
-
