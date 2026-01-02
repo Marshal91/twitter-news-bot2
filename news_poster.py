@@ -123,7 +123,6 @@ ARSENAL_RSS_FEEDS = [
     "https://www.arsenal.com/rss.xml",                          # Official Arsenal
     "https://www.skysports.com/rss/12040",                      # Sky Sports Arsenal
     "https://www.espn.com/espn/rss/soccer/team/_/id/359",      # ESPN Arsenal
-    "https://theathletic.com/team/arsenal/feed/",               # The Athletic (if accessible)
 ]
 
 # Duplicate Detection
@@ -1714,4 +1713,5 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"\n❌ CRITICAL ERROR: {e}")
         exit(1)
+
 
