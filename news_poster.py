@@ -1457,9 +1457,10 @@ def start_scheduler(bot):
 # ═══════════════════════════════════════════════════════════════════════════
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_HEAD(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
+        self.send_header('Content-length', '100')
         self.end_headers()
         status = f"Crypto Bot: RUNNING\nTime: {datetime.now(pytz.UTC)}\nNews: {daily_news_posts}/{DAILY_NEWS_LIMIT}\nQuotes: {daily_quote_posts}/{DAILY_QUOTE_LIMIT}\n"
         self.wfile.write(status.encode())
@@ -1503,3 +1504,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"\n❌ CRITICAL ERROR: {e}")
         exit(1)
+
