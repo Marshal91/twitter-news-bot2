@@ -67,7 +67,7 @@ DAILY_NEWS_LIMIT = 10        # Crypto news
 DAILY_QUOTE_LIMIT = 4        # Inspirational quotes
 DAILY_ARSENAL_LIMIT = 1      # Arsenal FC content
 DAILY_TOTAL_LIMIT = 15       # Total posts per day
-POST_INTERVAL_MINUTES = 90
+POST_INTERVAL_MINUTES = 70
 
 # Tracking
 last_post_time = None
@@ -1713,6 +1713,7 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"\n❌ CRITICAL ERROR: {e}")
         exit(1)
+
 
 
 
