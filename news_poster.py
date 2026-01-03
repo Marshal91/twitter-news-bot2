@@ -87,7 +87,7 @@ POSTING_SCHEDULE = [
     ("10:36", "news"),      # 6. Crypto News
     ("12:07", "news"),      # 7. Crypto News
     ("13:38", "quote"),     # 8. Quote
-    ("15:09", "news"),      # 9. Crypto News
+    ("15:09", "arsenal"),   # 9. Arsenal FC ⚽
     ("16:40", "news"),      # 10. Crypto News
     ("18:11", "news"),      # 11. Crypto News
     ("19:42", "quote"),     # 12. Quote
@@ -1713,5 +1713,6 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"\n❌ CRITICAL ERROR: {e}")
         exit(1)
+
 
 
