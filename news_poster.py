@@ -77,24 +77,17 @@ last_reset_date = datetime.now(pytz.UTC).date()
 # 10 crypto news + 4 quotes + 3 Arsenal = 17 posts
 # -----------------------------------------------------------------------
 POSTING_SCHEDULE = [
-    ("00:15", "news"),      #  1. Crypto News
     ("01:30", "arsenal"),   #  2. Arsenal (morning latest news)
     ("02:31", "news"),      #  3. Crypto News
     ("03:45", "quote"),     #  4. Inspirational Quote
     ("05:00", "news"),      #  5. Crypto News
-    ("06:30", "news"),      #  6. Crypto News
     ("08:00", "arsenal"),   #  7. Arsenal (morning edition)
     ("09:15", "news"),      #  8. Crypto News
     ("10:30", "quote"),     #  9. Inspirational Quote
     ("11:45", "news"),      # 10. Crypto News
-    ("12:07", "news"),      # 11. Crypto News
     ("13:30", "arsenal"),   # 12. Arsenal (afternoon edition)
-    ("14:45", "news"),      # 13. Crypto News
-    ("16:00", "quote"),     # 14. Inspirational Quote
-    ("17:30", "news"),      # 15. Crypto News
     ("19:00", "quote"),     # 16. Inspirational Quote
-    ("20:30", "news"),      # 17. Crypto News
-]
+   ]
 
 # Content Types
 CRYPTO_CONTENT_TYPES = [
@@ -1744,3 +1737,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"\n❌ CRITICAL ERROR: {e}")
         exit(1)
+
