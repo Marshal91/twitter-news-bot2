@@ -374,13 +374,11 @@ class APIFootballClient:
 # hardcoded data if API key is missing or calls fail.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Top 5 league IDs and display names
-TOP5_LEAGUES = {
-    39:  "Premier League",
-    140: "La Liga",
-    78:  "Bundesliga",
-    135: "Serie A",
-    61:  "Ligue 1",
+# League IDs
+EPL_LEAGUE_ID = 39
+
+LEAGUE_NAMES = {
+    39: "Premier League",
 }
 
 # Fallback hardcoded rival teams (used if API fetch fails)
@@ -435,36 +433,21 @@ class LiveDataCache:
         self._squad_cache: Dict[int, List] = {}
 
     def initialise(self):
-        """Call once at startup. EPL: all teams. Other leagues: top 5 by table."""
-        logger.info("🔄 Fetching live team data from API-Football...")
+        """Fetches all EPL teams from standings + Arsenal squad at startup."""
+        logger.info("🔄 Fetching live EPL team data from API-Football...")
 
-        # EPL — all 20 teams
         epl_teams = self.api.get_league_teams(39, top_n=None)
         if epl_teams:
             for t in epl_teams:
-                self.rival_teams[t["name"]] = {"id": t["id"], "league": 39, "colour": "#888888"}
-            logger.info(f"  ✅ Premier League: {len(epl_teams)} teams")
+                self.rival_teams[t["name"]] = {
+                    "id":     t["id"],
+                    "league": 39,
+                    "colour": "#888888",
+                }
+            logger.info(f"✅ Premier League: {len(epl_teams)} teams loaded")
         else:
-            logger.warning("  ⚠️ Premier League: fetch failed")
-
-        # Other Top 5 leagues — top 5 by current standings
-        other_leagues = {140: "La Liga", 78: "Bundesliga", 135: "Serie A", 61: "Ligue 1"}
-        for league_id, league_name in other_leagues.items():
-            teams = self.api.get_league_teams(league_id, top_n=5)
-            if teams:
-                for t in teams:
-                    self.rival_teams[t["name"]] = {
-                        "id": t["id"], "league": league_id, "colour": "#888888"
-                    }
-                logger.info(f"  ✅ {league_name}: top {len(teams)} teams")
-            else:
-                logger.warning(f"  ⚠️ {league_name}: fetch failed, skipping")
-
-        if not self.rival_teams:
-            logger.warning("⚠️ No teams fetched — using fallback team list")
+            logger.warning("⚠️ EPL fetch failed — using fallback team list")
             self.rival_teams = _FALLBACK_RIVAL_TEAMS.copy()
-        else:
-            logger.info(f"✅ {len(self.rival_teams)} rival teams loaded")
 
         # Arsenal squad
         squad = self.api.get_arsenal_squad()
@@ -1055,7 +1038,7 @@ class ArsenalDataMBAgent:
         vals_a = [afc_pct.get(k, 50) for k in keys]
         vals_b = [rival_pct.get(k, 40) for k in keys]
 
-        rival_league_name = TOP5_LEAGUES.get(rival_league_id, "Top 5 League")
+        rival_league_name = LEAGUE_NAMES.get(rival_league_id, "Premier League")
         title    = f"Arsenal FC  vs  {rival_team_key}"
         subtitle = f"Team Radar  ·  {rival_league_name}  ·  2025/26"
 
