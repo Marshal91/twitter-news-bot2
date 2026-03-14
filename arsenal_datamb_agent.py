@@ -131,37 +131,81 @@ TEAM_RADAR_METRICS = [
     ("Counters",    "counters"),
 ]
 
-# Arsenal squad with positions and API-Football player IDs
-# (IDs are accurate for API-Football v3)
+# Arsenal squad — full 2025/26 roster with API-Football v3 IDs
 ARSENAL_SQUAD = {
-    "Raya":        {"id": 2932,  "pos": "GK", "name": "David Raya"},
-    "White":       {"id": 19220, "pos": "FB", "name": "Ben White"},
-    "Saliba":      {"id": 47249, "pos": "CB", "name": "William Saliba"},
-    "Gabriel":     {"id": 9711,  "pos": "CB", "name": "Gabriel Magalhães"},
-    "Zinchenko":   {"id": 19185, "pos": "FB", "name": "Oleksandr Zinchenko"},
-    "Rice":        {"id": 19189, "pos": "MF", "name": "Declan Rice"},
-    "Odegaard":    {"id": 19239, "pos": "MF", "name": "Martin Ødegaard"},
-    "Thomas":      {"id": 19226, "pos": "MF", "name": "Thomas Partey"},
-    "Saka":        {"id": 19220, "pos": "WG", "name": "Bukayo Saka"},
-    "Martinelli":  {"id": 303117,"pos": "WG", "name": "Gabriel Martinelli"},
-    "Havertz":     {"id": 521,   "pos": "ST", "name": "Kai Havertz"},
-    "Trossard":    {"id": 20003, "pos": "WG", "name": "Leandro Trossard"},
-    "Jesus":       {"id": 9736,  "pos": "ST", "name": "Gabriel Jesus"},
-    "Nwaneri":     {"id": 389843,"pos": "MF", "name": "Ethan Nwaneri"},
+    # Goalkeepers
+    "Raya":        {"id": 2932,   "pos": "GK", "name": "David Raya"},
+    "Neto":        {"id": 9803,   "pos": "GK", "name": "Neto"},
+    # Defenders
+    "Saliba":      {"id": 47249,  "pos": "CB", "name": "William Saliba"},
+    "Gabriel":     {"id": 9711,   "pos": "CB", "name": "Gabriel Magalhães"},
+    "Kiwior":      {"id": 350023, "pos": "CB", "name": "Jakub Kiwior"},
+    "White":       {"id": 19220,  "pos": "FB", "name": "Ben White"},
+    "Calafiori":   {"id": 284460, "pos": "FB", "name": "Riccardo Calafiori"},
+    "Timber":      {"id": 345370, "pos": "FB", "name": "Jurrien Timber"},
+    "Zinchenko":   {"id": 19185,  "pos": "FB", "name": "Oleksandr Zinchenko"},
+    # Midfielders
+    "Rice":        {"id": 19189,  "pos": "MF", "name": "Declan Rice"},
+    "Odegaard":    {"id": 19239,  "pos": "MF", "name": "Martin Ødegaard"},
+    "Merino":      {"id": 284524, "pos": "MF", "name": "Mikel Merino"},
+    "Jorginho":    {"id": 9737,   "pos": "MF", "name": "Jorginho"},
+    "Nwaneri":     {"id": 389843, "pos": "MF", "name": "Ethan Nwaneri"},
+    "Thomas":      {"id": 19226,  "pos": "MF", "name": "Thomas Partey"},
+    # Forwards
+    "Saka":        {"id": 19268,  "pos": "WG", "name": "Bukayo Saka"},
+    "Martinelli":  {"id": 303117, "pos": "WG", "name": "Gabriel Martinelli"},
+    "Trossard":    {"id": 20003,  "pos": "WG", "name": "Leandro Trossard"},
+    "Sterling":    {"id": 18992,  "pos": "WG", "name": "Raheem Sterling"},
+    "Havertz":     {"id": 521,    "pos": "ST", "name": "Kai Havertz"},
+    "Jesus":       {"id": 9736,   "pos": "ST", "name": "Gabriel Jesus"},
 }
 
-# Rival PL teams with API-Football IDs
+# ── Rival teams across Top 5 European leagues ─────────────────────────────
+# league_id: EPL=39, La Liga=140, Bundesliga=78, Serie A=135, Ligue 1=61
 RIVAL_TEAMS = {
-    "Manchester City":    {"id": 50,  "short": "MCI", "colour": "#6CABDD"},
-    "Liverpool":          {"id": 40,  "short": "LIV", "colour": "#C8102E"},
-    "Chelsea":            {"id": 49,  "short": "CHE", "colour": "#034694"},
-    "Tottenham":          {"id": 47,  "short": "TOT", "colour": "#132257"},
-    "Manchester United":  {"id": 33,  "short": "MUN", "colour": "#DA291C"},
-    "Newcastle":          {"id": 34,  "short": "NEW", "colour": "#241F20"},
-    "Aston Villa":        {"id": 66,  "short": "AVL", "colour": "#670E36"},
-    "Brighton":           {"id": 51,  "short": "BHA", "colour": "#0057B8"},
-    "West Ham":           {"id": 48,  "short": "WHU", "colour": "#7A263A"},
-    "Fulham":             {"id": 36,  "short": "FUL", "colour": "#CC0000"},
+    # ── Premier League ──────────────────────────────────────────────
+    "Liverpool":            {"id": 40,  "league": 39,  "short": "LIV", "colour": "#C8102E"},
+    "Manchester City":      {"id": 50,  "league": 39,  "short": "MCI", "colour": "#6CABDD"},
+    "Chelsea":              {"id": 49,  "league": 39,  "short": "CHE", "colour": "#034694"},
+    "Tottenham":            {"id": 47,  "league": 39,  "short": "TOT", "colour": "#132257"},
+    "Manchester United":    {"id": 33,  "league": 39,  "short": "MUN", "colour": "#DA291C"},
+    "Newcastle":            {"id": 34,  "league": 39,  "short": "NEW", "colour": "#241F20"},
+    "Aston Villa":          {"id": 66,  "league": 39,  "short": "AVL", "colour": "#670E36"},
+    "Brighton":             {"id": 51,  "league": 39,  "short": "BHA", "colour": "#0057B8"},
+    "West Ham":             {"id": 48,  "league": 39,  "short": "WHU", "colour": "#7A263A"},
+    "Fulham":               {"id": 36,  "league": 39,  "short": "FUL", "colour": "#CC0000"},
+    "Nottm Forest":         {"id": 65,  "league": 39,  "short": "NFO", "colour": "#DD0000"},
+    "Brentford":            {"id": 55,  "league": 39,  "short": "BRE", "colour": "#E30613"},
+    # ── La Liga ─────────────────────────────────────────────────────
+    "Real Madrid":          {"id": 541, "league": 140, "short": "RMA", "colour": "#00529F"},
+    "Barcelona":            {"id": 529, "league": 140, "short": "BAR", "colour": "#A50044"},
+    "Atlético Madrid":      {"id": 530, "league": 140, "short": "ATM", "colour": "#CB3524"},
+    "Athletic Club":        {"id": 531, "league": 140, "short": "ATH", "colour": "#EE2523"},
+    "Real Sociedad":        {"id": 548, "league": 140, "short": "RSO", "colour": "#0067B1"},
+    "Villarreal":           {"id": 533, "league": 140, "short": "VIL", "colour": "#FFD700"},
+    "Sevilla":              {"id": 536, "league": 140, "short": "SEV", "colour": "#D4021D"},
+    # ── Bundesliga ──────────────────────────────────────────────────
+    "Bayern Munich":        {"id": 157, "league": 78,  "short": "BAY", "colour": "#DC052D"},
+    "Borussia Dortmund":    {"id": 165, "league": 78,  "short": "BVB", "colour": "#FDE100"},
+    "Bayer Leverkusen":     {"id": 168, "league": 78,  "short": "B04", "colour": "#E32221"},
+    "RB Leipzig":           {"id": 173, "league": 78,  "short": "RBL", "colour": "#DD0741"},
+    "Eintracht Frankfurt":  {"id": 169, "league": 78,  "short": "SGE", "colour": "#E1000F"},
+    "Borussia M'gladbach":  {"id": 163, "league": 78,  "short": "BMG", "colour": "#000000"},
+    # ── Serie A ─────────────────────────────────────────────────────
+    "Inter Milan":          {"id": 505, "league": 135, "short": "INT", "colour": "#010E80"},
+    "AC Milan":             {"id": 489, "league": 135, "short": "MIL", "colour": "#FB090B"},
+    "Juventus":             {"id": 496, "league": 135, "short": "JUV", "colour": "#000000"},
+    "Napoli":               {"id": 492, "league": 135, "short": "NAP", "colour": "#087DC2"},
+    "Roma":                 {"id": 497, "league": 135, "short": "ROM", "colour": "#8B0000"},
+    "Atalanta":             {"id": 499, "league": 135, "short": "ATA", "colour": "#1E6DB8"},
+    "Lazio":                {"id": 487, "league": 135, "short": "LAZ", "colour": "#87CEEB"},
+    # ── Ligue 1 ─────────────────────────────────────────────────────
+    "PSG":                  {"id": 85,  "league": 61,  "short": "PSG", "colour": "#004170"},
+    "Monaco":               {"id": 91,  "league": 61,  "short": "MON", "colour": "#CE1126"},
+    "Marseille":            {"id": 81,  "league": 61,  "short": "OM",  "colour": "#009AC7"},
+    "Lyon":                 {"id": 80,  "league": 61,  "short": "OL",  "colour": "#0046A8"},
+    "Lille":                {"id": 79,  "league": 61,  "short": "LIL", "colour": "#C8102E"},
+    "Nice":                 {"id": 84,  "league": 61,  "short": "NIC", "colour": "#000000"},
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -205,20 +249,39 @@ class APIFootballClient:
             return None
         return data["response"][0]
 
-    def get_team_stats(self, team_id: int, season: int = CURRENT_SEASON) -> Optional[Dict]:
+    def get_team_stats(self, team_id: int, league_id: int = PL_LEAGUE_ID,
+                       season: int = CURRENT_SEASON) -> Optional[Dict]:
         data = self._get("teams/statistics", {
-            "team": team_id,
-            "league": PL_LEAGUE_ID,
-            "season": season
+            "team": team_id, "league": league_id, "season": season
         })
         if not data:
             return None
         return data.get("response")
 
-    def search_player(self, name: str, team_id: int = None) -> Optional[Dict]:
-        params = {"search": name, "league": PL_LEAGUE_ID, "season": CURRENT_SEASON}
+    def get_squad(self, team_id: int) -> List[Dict]:
+        """Returns [{id, name, position}] for a team's full squad."""
+        data = self._get("players/squads", {"team": team_id})
+        if not data or not data.get("response"):
+            return []
+        try:
+            players = data["response"][0]["players"]
+            return sorted(
+                [{"id": p["id"], "name": p["name"],
+                  "position": p.get("position", "")} for p in players],
+                key=lambda x: x["name"]
+            )
+        except (IndexError, KeyError):
+            return []
+
+    def search_player(self, name: str, team_id: int = None,
+                      league_id: int = None) -> Optional[Dict]:
+        params = {"search": name, "season": CURRENT_SEASON}
         if team_id:
             params["team"] = team_id
+        elif league_id:
+            params["league"] = league_id
+        else:
+            params["league"] = PL_LEAGUE_ID
         data = self._get("players", params)
         if not data or not data.get("response"):
             return None
@@ -801,22 +864,28 @@ class ArsenalDataMBAgent:
         if not rival_info:
             return {"error": f"Unknown rival team: {rival_team_key}"}
 
-        afc_stats    = self.api_client.get_team_stats(ARSENAL_TEAM_ID)
-        rival_stats  = self.api_client.get_team_stats(rival_info["id"])
+        rival_league_id = rival_info.get("league", PL_LEAGUE_ID)
 
-        afc_raw      = self.extractor.extract_team_radar_values(afc_stats)
-        rival_raw    = self.extractor.extract_team_radar_values(rival_stats)
+        afc_stats   = self.api_client.get_team_stats(ARSENAL_TEAM_ID, PL_LEAGUE_ID)
+        rival_stats = self.api_client.get_team_stats(rival_info["id"], rival_league_id)
 
-        afc_pct      = self.extractor.percentile_normalise(afc_raw)
-        rival_pct    = self.extractor.percentile_normalise(rival_raw)
+        afc_raw   = self.extractor.extract_team_radar_values(afc_stats)
+        rival_raw = self.extractor.extract_team_radar_values(rival_stats)
 
-        labels    = [m[0] for m in TEAM_RADAR_METRICS]
-        keys      = [m[1] for m in TEAM_RADAR_METRICS]
-        vals_a    = [afc_pct.get(k, 50) for k in keys]
-        vals_b    = [rival_pct.get(k, 40) for k in keys]
+        afc_pct   = self.extractor.percentile_normalise(afc_raw)
+        rival_pct = self.extractor.percentile_normalise(rival_raw)
+
+        labels = [m[0] for m in TEAM_RADAR_METRICS]
+        keys   = [m[1] for m in TEAM_RADAR_METRICS]
+        vals_a = [afc_pct.get(k, 50) for k in keys]
+        vals_b = [rival_pct.get(k, 40) for k in keys]
+
+        league_labels = {39: "Premier League", 140: "La Liga", 78: "Bundesliga",
+                         135: "Serie A", 61: "Ligue 1"}
+        rival_league_name = league_labels.get(rival_league_id, "Top 5 League")
 
         title    = f"Arsenal FC  vs  {rival_team_key}"
-        subtitle = f"Team Radar · Premier League 2024/25"
+        subtitle = f"Team Radar · EPL vs {rival_league_name} · 2024/25"
 
         img_bytes = self.renderer.render(
             labels=labels,
@@ -841,15 +910,15 @@ class ArsenalDataMBAgent:
         )
 
         return {
-            "image_bytes": img_bytes,
-            "narrative":   text,
-            "labels":      labels,
-            "values_a":    vals_a,
-            "values_b":    vals_b,
+            "image_bytes":  img_bytes,
+            "narrative":    text,
+            "labels":       labels,
+            "values_a":     vals_a,
+            "values_b":     vals_b,
             "arsenal_name": "Arsenal FC",
-            "rival_name":  rival_team_key,
-            "tone":        tone,
-            "mode":        "team",
+            "rival_name":   rival_team_key,
+            "tone":         tone,
+            "mode":         "team",
         }
 
     # ── Post to X ─────────────────────────────────────────────────────────
