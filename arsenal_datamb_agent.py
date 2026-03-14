@@ -1064,8 +1064,18 @@ class ArsenalDataMBAgent:
 
         rival_league_id = rival_info.get("league", PL_LEAGUE_ID)
 
-        afc_stats   = self.api_client.get_team_stats(ARSENAL_TEAM_ID, PL_LEAGUE_ID)
-        rival_stats = self.api_client.get_team_stats(rival_info["id"], rival_league_id)
+        afc_stats   = self.api_client.get_team_stats(ARSENAL_TEAM_ID, PL_LEAGUE_ID, STANDINGS_SEASON)
+        rival_stats = self.api_client.get_team_stats(rival_info["id"], rival_league_id, STANDINGS_SEASON)
+
+        logger.info(f"Team stats — Arsenal: {'OK' if afc_stats else 'NONE'}, {rival_team_key}: {'OK' if rival_stats else 'NONE'}")
+        if afc_stats:
+            logger.info(f"Arsenal raw stats keys: {list(afc_stats.keys())}")
+
+        afc_raw   = self.extractor.extract_team_radar_values(afc_stats)
+        rival_raw = self.extractor.extract_team_radar_values(rival_stats)
+
+        logger.info(f"Arsenal extracted: {afc_raw}")
+        logger.info(f"Rival extracted: {rival_raw}")
 
         afc_raw   = self.extractor.extract_team_radar_values(afc_stats)
         rival_raw = self.extractor.extract_team_radar_values(rival_stats)
