@@ -44,7 +44,7 @@ OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "")
 
 # Premier League IDs (API-Football)
 PL_LEAGUE_ID   = 39
-CURRENT_SEASON = 2024   # 2024/25 season
+CURRENT_SEASON = 2025   # 2025/26 season
 
 # Arsenal team ID in API-Football
 ARSENAL_TEAM_ID = 42
@@ -258,18 +258,67 @@ class APIFootballClient:
             return None
         return data.get("response")
 
+    def get_league_teams(self, league_id: int,
+                         season: int = CURRENT_SEASON) -> List[Dict]:
+        """Returns all teams in a league as [{id, name, colour}]."""
+        data = self._get("teams", {"league": league_id, "season": season})
+        if not data or not data.get("response"):
+            return []
+        teams = []
+        for entry in data["response"]:
+            t = entry.get("team", {})
+            teams.append({
+                "id":     t.get("id"),
+                "name":   t.get("name", ""),
+                "colour": "#888888",   # fallback; no colour in API, kept neutral
+            })
+        return sorted(teams, key=lambda x: x["name"])
+
+    def get_arsenal_squad(self, season: int = CURRENT_SEASON) -> List[Dict]:
+        """
+        Fetches Arsenal's current squad from API-Football.
+        Returns [{id, name, pos, age}] sorted by position group.
+        """
+        data = self._get("players/squads", {"team": ARSENAL_TEAM_ID})
+        if not data or not data.get("response"):
+            return []
+        pos_order = {"Goalkeeper": 0, "Defender": 1, "Midfielder": 2, "Attacker": 3}
+        try:
+            players = data["response"][0]["players"]
+            result = []
+            for p in players:
+                api_pos = p.get("position", "Midfielder")
+                pos_code = {
+                    "Goalkeeper": "GK",
+                    "Defender":   "CB",   # refined later if needed
+                    "Midfielder": "MF",
+                    "Attacker":   "WG",
+                }.get(api_pos, "MF")
+                result.append({
+                    "id":   p["id"],
+                    "name": p["name"],
+                    "pos":  pos_code,
+                    "api_pos": api_pos,
+                })
+            result.sort(key=lambda x: pos_order.get(x["api_pos"], 99))
+            return result
+        except (IndexError, KeyError):
+            return []
+
     def get_squad(self, team_id: int) -> List[Dict]:
-        """Returns [{id, name, position}] for a team's full squad."""
+        """Returns [{id, name, position}] for a team's full squad — live."""
         data = self._get("players/squads", {"team": team_id})
         if not data or not data.get("response"):
             return []
         try:
             players = data["response"][0]["players"]
-            return sorted(
+            pos_order = {"Goalkeeper": 0, "Defender": 1, "Midfielder": 2, "Attacker": 3}
+            result = sorted(
                 [{"id": p["id"], "name": p["name"],
-                  "position": p.get("position", "")} for p in players],
-                key=lambda x: x["name"]
+                  "position": p.get("position", "Midfielder")} for p in players],
+                key=lambda x: (pos_order.get(x["position"], 99), x["name"])
             )
+            return result
         except (IndexError, KeyError):
             return []
 
@@ -308,6 +357,120 @@ class APIFootballClient:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LIVE DATA CACHE
+# Fetches teams and Arsenal squad from API at startup. Falls back to
+# hardcoded data if API key is missing or calls fail.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Top 5 league IDs and display names
+TOP5_LEAGUES = {
+    39:  "Premier League",
+    140: "La Liga",
+    78:  "Bundesliga",
+    135: "Serie A",
+    61:  "Ligue 1",
+}
+
+# Fallback hardcoded rival teams (used if API fetch fails)
+_FALLBACK_RIVAL_TEAMS = {
+    "Liverpool":           {"id": 40,  "league": 39,  "colour": "#C8102E"},
+    "Manchester City":     {"id": 50,  "league": 39,  "colour": "#6CABDD"},
+    "Chelsea":             {"id": 49,  "league": 39,  "colour": "#034694"},
+    "Tottenham":           {"id": 47,  "league": 39,  "colour": "#132257"},
+    "Manchester United":   {"id": 33,  "league": 39,  "colour": "#DA291C"},
+    "Newcastle":           {"id": 34,  "league": 39,  "colour": "#241F20"},
+    "Aston Villa":         {"id": 66,  "league": 39,  "colour": "#670E36"},
+    "Real Madrid":         {"id": 541, "league": 140, "colour": "#00529F"},
+    "Barcelona":           {"id": 529, "league": 140, "colour": "#A50044"},
+    "Bayern Munich":       {"id": 157, "league": 78,  "colour": "#DC052D"},
+    "Borussia Dortmund":   {"id": 165, "league": 78,  "colour": "#FDE100"},
+    "Inter Milan":         {"id": 505, "league": 135, "colour": "#010E80"},
+    "Juventus":            {"id": 496, "league": 135, "colour": "#000000"},
+    "PSG":                 {"id": 85,  "league": 61,  "colour": "#004170"},
+    "Monaco":              {"id": 91,  "league": 61,  "colour": "#CE1126"},
+}
+
+# Fallback Arsenal squad (used if API fetch fails)
+_FALLBACK_ARSENAL_SQUAD = [
+    {"id": 2932,   "name": "David Raya",           "pos": "GK"},
+    {"id": 47249,  "name": "William Saliba",        "pos": "CB"},
+    {"id": 9711,   "name": "Gabriel Magalhães",     "pos": "CB"},
+    {"id": 19220,  "name": "Ben White",             "pos": "CB"},
+    {"id": 284460, "name": "Riccardo Calafiori",    "pos": "CB"},
+    {"id": 19185,  "name": "Oleksandr Zinchenko",   "pos": "CB"},
+    {"id": 19189,  "name": "Declan Rice",           "pos": "MF"},
+    {"id": 19239,  "name": "Martin Ødegaard",       "pos": "MF"},
+    {"id": 284524, "name": "Mikel Merino",          "pos": "MF"},
+    {"id": 19268,  "name": "Bukayo Saka",           "pos": "WG"},
+    {"id": 303117, "name": "Gabriel Martinelli",    "pos": "WG"},
+    {"id": 521,    "name": "Kai Havertz",           "pos": "WG"},
+]
+
+
+class LiveDataCache:
+    """
+    Fetches and caches live team + squad data from API-Football.
+    Populated once at agent startup. Thread-safe reads after init.
+    """
+
+    def __init__(self, api_client: "APIFootballClient"):
+        self.api = api_client
+        # {team_name: {id, league, colour}}
+        self.rival_teams: Dict[str, Dict] = {}
+        # [{id, name, pos, api_pos}]
+        self.arsenal_squad: List[Dict] = []
+        # {team_id: [{id, name, position}]}  — populated on-demand per /squad call
+        self._squad_cache: Dict[int, List] = {}
+
+    def initialise(self):
+        """Call once at startup. Fetches teams for all Top 5 leagues."""
+        logger.info("🔄 Fetching live team data from API-Football...")
+        fetched = 0
+
+        for league_id, league_name in TOP5_LEAGUES.items():
+            teams = self.api.get_league_teams(league_id)
+            if teams:
+                for t in teams:
+                    # Skip Arsenal from rival list
+                    if t["id"] == ARSENAL_TEAM_ID:
+                        continue
+                    self.rival_teams[t["name"]] = {
+                        "id":     t["id"],
+                        "league": league_id,
+                        "colour": "#888888",
+                    }
+                fetched += len(teams)
+                logger.info(f"  ✅ {league_name}: {len(teams)} teams")
+            else:
+                logger.warning(f"  ⚠️ {league_name}: fetch failed, skipping")
+
+        if not self.rival_teams:
+            logger.warning("⚠️ No teams fetched — using fallback team list")
+            self.rival_teams = _FALLBACK_RIVAL_TEAMS.copy()
+        else:
+            logger.info(f"✅ {len(self.rival_teams)} rival teams loaded")
+
+        # Arsenal squad
+        squad = self.api.get_arsenal_squad()
+        if squad:
+            self.arsenal_squad = squad
+            logger.info(f"✅ Arsenal squad: {len(squad)} players loaded")
+        else:
+            logger.warning("⚠️ Arsenal squad fetch failed — using fallback")
+            self.arsenal_squad = _FALLBACK_ARSENAL_SQUAD.copy()
+
+    def get_squad(self, team_id: int) -> List[Dict]:
+        """Returns live squad for any team, with per-team caching."""
+        if team_id not in self._squad_cache:
+            self._squad_cache[team_id] = self.api.get_squad(team_id)
+        return self._squad_cache[team_id]
+
+    def teams_by_league(self, league_id: int) -> Dict[str, Dict]:
+        return {k: v for k, v in self.rival_teams.items()
+                if v.get("league") == league_id}
+
+    def get_team_info(self, team_name: str) -> Optional[Dict]:
+        return self.rival_teams.get(team_name)
 # STATS EXTRACTOR  (raw API stats → normalised radar values 0-100)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -488,7 +651,7 @@ class RadarRenderer:
         label_b:      str = None,
         title:        str = "",
         subtitle:     str = "",
-        season:       str = "2024/25",
+        season:       str = "2025/26",
         rival_colour: str = RIVAL_COLOUR,
     ) -> bytes:
 
@@ -756,100 +919,97 @@ Output ONLY the tweet/thread text."""
 
 class ArsenalDataMBAgent:
     """
-    Orchestrator.  Called by the Flask web UI and (optionally) by
-    the existing scheduled bot.
+    Orchestrator. Uses LiveDataCache for always-current team and player data.
+    Called by the Flask web UI and the background scheduler.
     """
 
     def __init__(self, twitter_api=None, twitter_client=None):
-        self.api_client   = APIFootballClient(API_FOOTBALL_KEY)
-        self.extractor    = StatsExtractor()
-        self.renderer     = RadarRenderer()
-        self.narrative    = ArsenalNarrativeGenerator()
-        self.twitter_api  = twitter_api    # tweepy.API  (v1.1 — for media upload)
-        self.twitter_client = twitter_client  # tweepy.Client (v2 — for tweet)
+        self.api_client     = APIFootballClient(API_FOOTBALL_KEY)
+        self.cache          = LiveDataCache(self.api_client)
+        self.extractor      = StatsExtractor()
+        self.renderer       = RadarRenderer()
+        self.narrative      = ArsenalNarrativeGenerator()
+        self.twitter_api    = twitter_api
+        self.twitter_client = twitter_client
+
+        # Populate live data (teams + Arsenal squad) at startup
+        self.cache.initialise()
+
+    # ── Convenience properties for web UI ────────────────────────────────
+    @property
+    def rival_teams(self) -> Dict:
+        return self.cache.rival_teams
+
+    @property
+    def arsenal_squad(self) -> List[Dict]:
+        return self.cache.arsenal_squad
 
     # ── Player vs Player ──────────────────────────────────────────────────
 
     def build_player_comparison(
         self,
-        arsenal_key: str,       # key from ARSENAL_SQUAD
-        rival_name: str,        # free-text name for search
+        arsenal_player_id: int,     # player ID from live squad
+        arsenal_player_name: str,
+        arsenal_pos: str,           # pos code: GK/CB/MF/WG/ST
+        rival_name: str,            # name to search
         rival_team_id: int = None,
+        rival_league_id: int = None,
         tone: str = "hype",
         custom_note: str = "",
     ) -> Dict:
-        """
-        Fetches stats for both players, renders radar, generates narrative.
-        Returns dict with: image_bytes, narrative, labels, values_a, values_b, meta
-        """
-        arsenal_info = ARSENAL_SQUAD.get(arsenal_key)
-        if not arsenal_info:
-            return {"error": f"Unknown Arsenal player: {arsenal_key}"}
-
-        pos = arsenal_info["pos"]
-        metrics_def = PLAYER_RADAR_METRICS.get(pos, PLAYER_RADAR_METRICS["MF"])
+        metrics_def   = PLAYER_RADAR_METRICS.get(arsenal_pos, PLAYER_RADAR_METRICS["MF"])
         metric_labels = [m[0] for m in metrics_def]
         metric_keys   = [m[1] for m in metrics_def]
 
-        # Fetch Arsenal player
-        afc_data = self.api_client.get_player_stats(arsenal_info["id"])
+        # Arsenal player stats
+        afc_data = self.api_client.get_player_stats(arsenal_player_id)
         if not afc_data:
-            return {"error": f"Could not fetch stats for {arsenal_info['name']}"}
+            return {"error": f"Could not fetch stats for {arsenal_player_name}"}
 
-        afc_raw  = self.extractor.extract_player_radar_values(afc_data, pos)
-        afc_pct  = self.extractor.percentile_normalise(afc_raw)
-        vals_a   = [afc_pct.get(k, 50) for k in metric_keys]
+        afc_raw = self.extractor.extract_player_radar_values(afc_data, arsenal_pos)
+        afc_pct = self.extractor.percentile_normalise(afc_raw)
+        vals_a  = [afc_pct.get(k, 50) for k in metric_keys]
 
-        # Fetch rival player (optional)
-        vals_b   = None
+        # Rival player stats
+        vals_b     = None
         rival_data = None
         if rival_name:
-            rival_data = self.api_client.search_player(rival_name, rival_team_id)
+            rival_data = self.api_client.search_player(
+                rival_name, rival_team_id, rival_league_id
+            )
             if rival_data:
-                rival_raw = self.extractor.extract_player_radar_values(rival_data, pos)
+                rival_raw = self.extractor.extract_player_radar_values(rival_data, arsenal_pos)
                 rival_pct = self.extractor.percentile_normalise(rival_raw)
                 vals_b    = [rival_pct.get(k, 40) for k in metric_keys]
 
-        # Radar image
         rival_display = rival_data["player"]["name"] if rival_data else None
-        title    = f"{arsenal_info['name']}  {'vs  ' + rival_display if rival_display else ''}"
-        subtitle = f"{pos} · Premier League 2024/25 · Percentile Rankings"
+        title    = f"{arsenal_player_name}  {'vs  ' + rival_display if rival_display else ''}"
+        subtitle = f"{arsenal_pos}  ·  Premier League 2025/26  ·  Percentile Rankings"
 
         img_bytes = self.renderer.render(
-            labels=metric_labels,
-            values_a=vals_a,
-            label_a=arsenal_info["name"],
-            values_b=vals_b,
-            label_b=rival_display,
-            title=title,
-            subtitle=subtitle,
+            labels=metric_labels, values_a=vals_a,
+            label_a=arsenal_player_name,
+            values_b=vals_b, label_b=rival_display,
+            title=title, subtitle=subtitle,
         )
 
-        # Metrics list for narrative
         metrics_for_narrative = [
             (metric_labels[i], vals_a[i], vals_b[i] if vals_b else 0)
             for i in range(len(metric_labels))
         ]
 
-        # Narrative
         text = self.narrative.generate_player_narrative(
-            arsenal_player=arsenal_info["name"],
+            arsenal_player=arsenal_player_name,
             rival_player=rival_display or "",
             metrics=metrics_for_narrative,
-            tone=tone,
-            custom_note=custom_note,
+            tone=tone, custom_note=custom_note,
         )
 
         return {
-            "image_bytes": img_bytes,
-            "narrative":   text,
-            "labels":      metric_labels,
-            "values_a":    vals_a,
-            "values_b":    vals_b,
-            "arsenal_name": arsenal_info["name"],
-            "rival_name":  rival_display,
-            "tone":        tone,
-            "mode":        "player",
+            "image_bytes":  img_bytes, "narrative": text,
+            "labels":       metric_labels, "values_a": vals_a,
+            "values_b":     vals_b, "arsenal_name": arsenal_player_name,
+            "rival_name":   rival_display, "tone": tone, "mode": "player",
         }
 
     # ── Team vs Team ──────────────────────────────────────────────────────
@@ -860,7 +1020,7 @@ class ArsenalDataMBAgent:
         tone: str = "hype",
         custom_note: str = "",
     ) -> Dict:
-        rival_info = RIVAL_TEAMS.get(rival_team_key)
+        rival_info = self.cache.get_team_info(rival_team_key)
         if not rival_info:
             return {"error": f"Unknown rival team: {rival_team_key}"}
 
@@ -871,7 +1031,6 @@ class ArsenalDataMBAgent:
 
         afc_raw   = self.extractor.extract_team_radar_values(afc_stats)
         rival_raw = self.extractor.extract_team_radar_values(rival_stats)
-
         afc_pct   = self.extractor.percentile_normalise(afc_raw)
         rival_pct = self.extractor.percentile_normalise(rival_raw)
 
@@ -880,21 +1039,14 @@ class ArsenalDataMBAgent:
         vals_a = [afc_pct.get(k, 50) for k in keys]
         vals_b = [rival_pct.get(k, 40) for k in keys]
 
-        league_labels = {39: "Premier League", 140: "La Liga", 78: "Bundesliga",
-                         135: "Serie A", 61: "Ligue 1"}
-        rival_league_name = league_labels.get(rival_league_id, "Top 5 League")
-
+        rival_league_name = TOP5_LEAGUES.get(rival_league_id, "Top 5 League")
         title    = f"Arsenal FC  vs  {rival_team_key}"
-        subtitle = f"Team Radar · EPL vs {rival_league_name} · 2024/25"
+        subtitle = f"Team Radar  ·  {rival_league_name}  ·  2025/26"
 
         img_bytes = self.renderer.render(
-            labels=labels,
-            values_a=vals_a,
-            label_a="Arsenal FC",
-            values_b=vals_b,
-            label_b=rival_team_key,
-            title=title,
-            subtitle=subtitle,
+            labels=labels, values_a=vals_a, label_a="Arsenal FC",
+            values_b=vals_b, label_b=rival_team_key,
+            title=title, subtitle=subtitle,
             rival_colour=rival_info.get("colour", RIVAL_COLOUR),
         )
 
@@ -905,50 +1057,33 @@ class ArsenalDataMBAgent:
         text = self.narrative.generate_team_narrative(
             rival_team=rival_team_key,
             metrics=metrics_for_narrative,
-            tone=tone,
-            custom_note=custom_note,
+            tone=tone, custom_note=custom_note,
         )
 
         return {
-            "image_bytes":  img_bytes,
-            "narrative":    text,
-            "labels":       labels,
-            "values_a":     vals_a,
-            "values_b":     vals_b,
-            "arsenal_name": "Arsenal FC",
-            "rival_name":   rival_team_key,
-            "tone":         tone,
-            "mode":         "team",
+            "image_bytes": img_bytes, "narrative": text,
+            "labels": labels, "values_a": vals_a, "values_b": vals_b,
+            "arsenal_name": "Arsenal FC", "rival_name": rival_team_key,
+            "tone": tone, "mode": "team",
         }
 
     # ── Post to X ─────────────────────────────────────────────────────────
 
     def post_to_x(self, narrative: str, image_bytes: bytes) -> Dict:
-        """
-        1. Upload image via v1.1 media_upload
-        2. Post tweet with media_id via v2 create_tweet
-        Returns {"success": True/False, "tweet_id": ..., "error": ...}
-        """
         if not self.twitter_api or not self.twitter_client:
             return {"success": False, "error": "Twitter clients not configured"}
-
         try:
-            # Save image to temp file for tweepy upload
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                 tmp.write(image_bytes)
                 tmp_path = tmp.name
-
-            media = self.twitter_api.media_upload(filename=tmp_path)
+            media    = self.twitter_api.media_upload(filename=tmp_path)
             os.unlink(tmp_path)
-
             response = self.twitter_client.create_tweet(
-                text=narrative,
-                media_ids=[media.media_id_string]
+                text=narrative, media_ids=[media.media_id_string]
             )
             tweet_id = response.data["id"]
-            logger.info(f"⚽ Arsenal post live: https://twitter.com/user/status/{tweet_id}")
+            logger.info(f"⚽ Posted: https://twitter.com/user/status/{tweet_id}")
             return {"success": True, "tweet_id": tweet_id}
-
         except Exception as e:
             logger.error(f"Post to X failed: {e}")
             return {"success": False, "error": str(e)}
