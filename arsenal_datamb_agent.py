@@ -258,21 +258,33 @@ class APIFootballClient:
             return None
         return data.get("response")
 
-    def get_league_teams(self, league_id: int,
+    def get_league_teams(self, league_id: int, top_n: int = None,
                          season: int = CURRENT_SEASON) -> List[Dict]:
-        """Returns all teams in a league as [{id, name, colour}]."""
-        data = self._get("teams", {"league": league_id, "season": season})
+        """
+        Fetches teams via standings (free-tier compatible).
+        top_n=None → all teams (EPL).
+        top_n=5    → top 5 by current table position (other leagues).
+        """
+        data = self._get("standings", {"league": league_id, "season": season})
         if not data or not data.get("response"):
             return []
+        try:
+            standings = data["response"][0]["league"]["standings"][0]
+        except (IndexError, KeyError):
+            return []
+
         teams = []
-        for entry in data["response"]:
-            t = entry.get("team", {})
+        rows = standings[:top_n] if top_n else standings
+        for row in rows:
+            t = row.get("team", {})
+            if t.get("id") == ARSENAL_TEAM_ID:
+                continue
             teams.append({
                 "id":     t.get("id"),
                 "name":   t.get("name", ""),
-                "colour": "#888888",   # fallback; no colour in API, kept neutral
+                "colour": "#888888",
             })
-        return sorted(teams, key=lambda x: x["name"])
+        return teams
 
     def get_arsenal_squad(self, season: int = CURRENT_SEASON) -> List[Dict]:
         """
@@ -423,24 +435,28 @@ class LiveDataCache:
         self._squad_cache: Dict[int, List] = {}
 
     def initialise(self):
-        """Call once at startup. Fetches teams for all Top 5 leagues."""
+        """Call once at startup. EPL: all teams. Other leagues: top 5 by table."""
         logger.info("🔄 Fetching live team data from API-Football...")
-        fetched = 0
 
-        for league_id, league_name in TOP5_LEAGUES.items():
-            teams = self.api.get_league_teams(league_id)
+        # EPL — all 20 teams
+        epl_teams = self.api.get_league_teams(39, top_n=None)
+        if epl_teams:
+            for t in epl_teams:
+                self.rival_teams[t["name"]] = {"id": t["id"], "league": 39, "colour": "#888888"}
+            logger.info(f"  ✅ Premier League: {len(epl_teams)} teams")
+        else:
+            logger.warning("  ⚠️ Premier League: fetch failed")
+
+        # Other Top 5 leagues — top 5 by current standings
+        other_leagues = {140: "La Liga", 78: "Bundesliga", 135: "Serie A", 61: "Ligue 1"}
+        for league_id, league_name in other_leagues.items():
+            teams = self.api.get_league_teams(league_id, top_n=5)
             if teams:
                 for t in teams:
-                    # Skip Arsenal from rival list
-                    if t["id"] == ARSENAL_TEAM_ID:
-                        continue
                     self.rival_teams[t["name"]] = {
-                        "id":     t["id"],
-                        "league": league_id,
-                        "colour": "#888888",
+                        "id": t["id"], "league": league_id, "colour": "#888888"
                     }
-                fetched += len(teams)
-                logger.info(f"  ✅ {league_name}: {len(teams)} teams")
+                logger.info(f"  ✅ {league_name}: top {len(teams)} teams")
             else:
                 logger.warning(f"  ⚠️ {league_name}: fetch failed, skipping")
 
