@@ -336,11 +336,7 @@ input[type=text]::placeholder{color:var(--muted)}
         <div class="section-label">Rival Team</div>
         <select id="rival-team-for-player" onchange="loadRivalPlayers(this.value)">
           <option value="">&#8212; Select rival team first &#8212;</option>
-          <optgroup label="Premier League">%(pl_options)s</optgroup>
-          <optgroup label="La Liga">%(laliga_options)s</optgroup>
-          <optgroup label="Bundesliga">%(bundesliga_options)s</optgroup>
-          <optgroup label="Serie A">%(seriea_options)s</optgroup>
-          <optgroup label="Ligue 1">%(ligue1_options)s</optgroup>
+          %(pl_options)s
         </select>
 
         <div class="section-label">Rival Player</div>
@@ -358,11 +354,7 @@ input[type=text]::placeholder{color:var(--muted)}
         <div class="section-label">Arsenal vs</div>
         <select id="rival-team-team">
           <option value="">&#8212; Select rival team &#8212;</option>
-          <optgroup label="Premier League">%(pl_team_options)s</optgroup>
-          <optgroup label="La Liga">%(laliga_team_options)s</optgroup>
-          <optgroup label="Bundesliga">%(bundesliga_team_options)s</optgroup>
-          <optgroup label="Serie A">%(seriea_team_options)s</optgroup>
-          <optgroup label="Ligue 1">%(ligue1_team_options)s</optgroup>
+          %(pl_team_options)s
         </select>
       </div>
 
@@ -655,15 +647,7 @@ def index():
         "mid_options":             afc_opts(["Midfielder"]),
         "fwd_options":             afc_opts(["Attacker"]),
         "pl_options":              team_player_opts(39),
-        "laliga_options":          team_player_opts(140),
-        "bundesliga_options":      team_player_opts(78),
-        "seriea_options":          team_player_opts(135),
-        "ligue1_options":          team_player_opts(61),
         "pl_team_options":         team_opts(39),
-        "laliga_team_options":     team_opts(140),
-        "bundesliga_team_options": team_opts(78),
-        "seriea_team_options":     team_opts(135),
-        "ligue1_team_options":     team_opts(61),
         "schedule_json":           json.dumps(SCHEDULE),
     }
     return html
