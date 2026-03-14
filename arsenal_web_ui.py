@@ -1,31 +1,66 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-    ARSENAL DATAMB X AGENT  —  Flask Web UI
-    Run: python arsenal_web_ui.py
-    Opens on: http://localhost:5000  (or your Render URL)
+    ARSENAL DATAMB X AGENT  —  Web UI + Auto-Scheduler
+    Run:  python arsenal_web_ui.py
+    URL:  http://0.0.0.0:PORT  (Render sets PORT automatically)
+
+    SCHEDULED POSTS  (3 per day, auto)
+    ────────────────────────────────────
+    08:00 UTC  — player comparison  (random Arsenal player vs rival)
+    13:00 UTC  — team comparison    (Arsenal vs random rival team)
+    18:00 UTC  — player comparison  (different player, different tone)
+
+    MANUAL POSTS  (web UI)
+    ────────────────────────────────────
+    Select player/team → generate radar → edit draft → confirm → posts to X
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
 import os
 import io
 import base64
+import random
 import logging
 import threading
-from flask import Flask, render_template_string, request, jsonify, send_file
+import time
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
+
+import pytz
 import tweepy
 from dotenv import load_dotenv
+from flask import Flask, render_template_string, request, jsonify
 
 load_dotenv()
 
-# ── Twitter clients (reuse from existing bot) ─────────────────────────────
-TWITTER_API_KEY      = os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET   = os.getenv("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_SECRET= os.getenv("TWITTER_ACCESS_SECRET")
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGGING
+# ─────────────────────────────────────────────────────────────────────────────
+
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s: %(message)s",
+    handlers=[
+        RotatingFileHandler("logs/arsenal_agent.log",
+                            maxBytes=5 * 1024 * 1024, backupCount=3),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TWITTER CLIENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+TWITTER_API_KEY       = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET    = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN  = os.getenv("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
 auth = tweepy.OAuth1UserHandler(
     TWITTER_API_KEY, TWITTER_API_SECRET,
-    TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
+    TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET,
 )
 twitter_api_v1 = tweepy.API(auth)
 twitter_client_v2 = tweepy.Client(
@@ -34,6 +69,10 @@ twitter_client_v2 = tweepy.Client(
     access_token=TWITTER_ACCESS_TOKEN,
     access_token_secret=TWITTER_ACCESS_SECRET,
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AGENT
+# ─────────────────────────────────────────────────────────────────────────────
 
 from arsenal_datamb_agent import (
     ArsenalDataMBAgent,
@@ -46,15 +85,170 @@ agent = ArsenalDataMBAgent(
     twitter_client=twitter_client_v2,
 )
 
-# In-memory session store (one pending post at a time)
-_pending: dict = {}
-_lock = threading.Lock()
+# ─────────────────────────────────────────────────────────────────────────────
+# SCHEDULER CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
 
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
+# (UTC time string, mode)  — add/remove slots freely
+SCHEDULE = [
+    ("08:00", "player"),
+    ("13:00", "team"),
+    ("18:00", "player"),
+]
+
+TONES = ["hype", "analytical", "banter", "historic", "tactical"]
+
+# Rival player pool per Arsenal position
+RIVAL_PLAYER_MAP = {
+    "GK": [("Alisson",                 40),
+           ("Ederson",                 50),
+           ("Andre Onana",             33)],
+    "CB": [("Virgil van Dijk",         40),
+           ("Ruben Dias",              50),
+           ("John Stones",             50)],
+    "FB": [("Trent Alexander-Arnold",  40),
+           ("Andy Robertson",          40),
+           ("Reece James",             49)],
+    "MF": [("Rodri",                   50),
+           ("Bruno Fernandes",         33),
+           ("Kobbie Mainoo",           33)],
+    "WG": [("Mohamed Salah",           40),
+           ("Son Heung-min",           47),
+           ("Cole Palmer",             49)],
+    "ST": [("Erling Haaland",          50),
+           ("Darwin Nunez",            40),
+           ("Alexander Isak",          34)],
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HTML TEMPLATE  (single-file, dark Arsenal aesthetic)
+# SCHEDULER STATE  (shared between scheduler thread and UI)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_sched_state = {
+    "daily_count":    0,
+    "last_posted_at": None,   # ISO string UTC
+    "last_post_type": None,
+    "last_tweet_id":  None,
+    "last_reset_date": datetime.now(pytz.UTC).date().isoformat(),
+    "log":            [],     # last 10 entries
+}
+_sched_lock   = threading.Lock()
+_pending      = {}
+_pending_lock = threading.Lock()
+
+
+def _sched_log(msg: str):
+    ts = datetime.now(pytz.UTC).strftime("%Y-%m-%d %H:%M UTC")
+    entry = f"[{ts}] {msg}"
+    logger.info(entry)
+    with _sched_lock:
+        _sched_state["log"].append(entry)
+        _sched_state["log"] = _sched_state["log"][-10:]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCHEDULED POST LOGIC
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _run_player_post() -> bool:
+    """Pick a random Arsenal player + rival and fire a scheduled post."""
+    arsenal_key = random.choice(list(ARSENAL_SQUAD.keys()))
+    pos         = ARSENAL_SQUAD[arsenal_key]["pos"]
+    rivals_pool = RIVAL_PLAYER_MAP.get(pos, RIVAL_PLAYER_MAP["MF"])
+    rival_name, rival_team_id = random.choice(rivals_pool)
+    tone = random.choice(TONES)
+
+    _sched_log(f"⚽ Scheduled player: {ARSENAL_SQUAD[arsenal_key]['name']} vs {rival_name} | tone={tone}")
+
+    result = agent.build_player_comparison(
+        arsenal_key=arsenal_key,
+        rival_name=rival_name,
+        rival_team_id=rival_team_id,
+        tone=tone,
+    )
+    if "error" in result:
+        _sched_log(f"❌ Build failed: {result['error']}")
+        return False
+
+    post_result = agent.post_to_x(result["narrative"], result["image_bytes"])
+    if post_result["success"]:
+        _sched_log(f"✅ Player post live → tweet {post_result['tweet_id']}")
+        with _sched_lock:
+            _sched_state["last_posted_at"] = datetime.now(pytz.UTC).isoformat()
+            _sched_state["last_post_type"] = "player"
+            _sched_state["last_tweet_id"]  = post_result["tweet_id"]
+            _sched_state["daily_count"]   += 1
+        return True
+    else:
+        _sched_log(f"❌ Post failed: {post_result['error']}")
+        return False
+
+
+def _run_team_post() -> bool:
+    """Pick a random rival team and fire a scheduled team comparison post."""
+    rival_team = random.choice(list(RIVAL_TEAMS.keys()))
+    tone       = random.choice(TONES)
+
+    _sched_log(f"🏟️ Scheduled team: Arsenal vs {rival_team} | tone={tone}")
+
+    result = agent.build_team_comparison(rival_team_key=rival_team, tone=tone)
+    if "error" in result:
+        _sched_log(f"❌ Build failed: {result['error']}")
+        return False
+
+    post_result = agent.post_to_x(result["narrative"], result["image_bytes"])
+    if post_result["success"]:
+        _sched_log(f"✅ Team post live → tweet {post_result['tweet_id']}")
+        with _sched_lock:
+            _sched_state["last_posted_at"] = datetime.now(pytz.UTC).isoformat()
+            _sched_state["last_post_type"] = "team"
+            _sched_state["last_tweet_id"]  = post_result["tweet_id"]
+            _sched_state["daily_count"]   += 1
+        return True
+    else:
+        _sched_log(f"❌ Post failed: {post_result['error']}")
+        return False
+
+
+def _reset_daily_if_needed():
+    today = datetime.now(pytz.UTC).date().isoformat()
+    with _sched_lock:
+        if _sched_state["last_reset_date"] != today:
+            _sched_state["daily_count"]    = 0
+            _sched_state["last_reset_date"] = today
+            _sched_log("📅 Daily counter reset")
+
+
+def scheduler_loop():
+    """Background thread — checks every 30 seconds against SCHEDULE."""
+    logger.info("🕐 Scheduler started")
+    last_fired_minute = None
+
+    while True:
+        try:
+            now    = datetime.now(pytz.UTC)
+            minute = now.strftime("%H:%M")
+
+            _reset_daily_if_needed()
+
+            if minute != last_fired_minute:
+                for slot_time, slot_mode in SCHEDULE:
+                    if slot_time == minute:
+                        _sched_log(f"⏰ Firing scheduled {slot_mode} post at {minute} UTC")
+                        if slot_mode == "player":
+                            _run_player_post()
+                        else:
+                            _run_team_post()
+                last_fired_minute = minute
+
+        except Exception as e:
+            logger.error(f"Scheduler error: {e}")
+
+        time.sleep(30)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HTML TEMPLATE
 # ─────────────────────────────────────────────────────────────────────────────
 
 HTML = r"""
@@ -64,12 +258,11 @@ HTML = r"""
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Arsenal DataMB X Agent</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --red:#EF0107;--red-dark:#9B0005;--gold:#DB9C33;
+  --red:#EF0107;--gold:#DB9C33;
   --bg:#0A0A0A;--surface:#141414;--surface2:#1C1C1C;--surface3:#262626;
   --border:rgba(255,255,255,0.08);--text:#fff;--muted:rgba(255,255,255,0.45);
   --secondary:rgba(255,255,255,0.7);
@@ -77,11 +270,9 @@ HTML = r"""
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
 
 /* HEADER */
-.header{
-  background:linear-gradient(135deg,#0A0A0A 0%,#1a0000 60%,#0d0000 100%);
-  border-bottom:1px solid rgba(239,1,7,.25);
-  padding:14px 24px;display:flex;align-items:center;gap:14px;
-}
+.header{background:linear-gradient(135deg,#0A0A0A 0%,#1a0000 60%,#0d0000 100%);
+  border-bottom:1px solid rgba(239,1,7,.25);padding:14px 24px;
+  display:flex;align-items:center;gap:14px}
 .header h1{font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}
 .header p{font-size:11px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-top:2px}
 .crest{width:40px;height:40px;flex-shrink:0}
@@ -89,8 +280,9 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
   font-size:10px;font-weight:600;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;text-transform:uppercase}
 
 /* LAYOUT */
-.container{max-width:1100px;margin:0 auto;padding:24px 16px;display:grid;grid-template-columns:340px 1fr;gap:20px}
-@media(max-width:780px){.container{grid-template-columns:1fr}}
+.container{max-width:1160px;margin:0 auto;padding:20px 16px;
+  display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start}
+@media(max-width:800px){.container{grid-template-columns:1fr}}
 
 /* PANEL */
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
@@ -104,78 +296,91 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
   cursor:pointer;border-bottom:2px solid transparent;transition:.2s}
 .tab.active{color:var(--red);border-bottom-color:var(--red)}
 
-/* FORM ELEMENTS */
-select,input[type=text]{
-  width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;
-  color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:9px 11px;
-  outline:none;margin-bottom:10px;transition:border-color .2s;
-}
-select:hover,input[type=text]:hover,select:focus,input[type=text]:focus{border-color:rgba(239,1,7,.4)}
-label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;
-  font-family:'Oswald',sans-serif;letter-spacing:.8px}
+/* INPUTS */
+select,input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;
+  padding:9px 11px;outline:none;margin-bottom:10px;transition:border-color .2s}
+select:focus,input[type=text]:focus{border-color:rgba(239,1,7,.45)}
+input[type=text]::placeholder{color:var(--muted)}
 
+/* TONE GRID */
 .tone-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
 .tone-btn{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
   color:var(--secondary);font-size:12px;padding:8px;cursor:pointer;transition:.2s;text-align:center}
 .tone-btn.active{border-color:var(--red);color:var(--text);background:rgba(239,1,7,.12)}
-.tone-btn:hover{border-color:rgba(239,1,7,.3)}
+.tone-btn:hover:not(.active){border-color:rgba(239,1,7,.3)}
 
+/* BUTTONS */
 .btn{border:none;border-radius:8px;font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;
   letter-spacing:1px;text-transform:uppercase;cursor:pointer;padding:10px 18px;transition:.15s}
-.btn-primary{background:var(--red);color:#fff;width:100%}
-.btn-primary:hover{background:#c8000a}
-.btn-primary:active{transform:scale(.97)}
-.btn-primary:disabled{background:#555;cursor:not-allowed}
-.btn-secondary{background:var(--surface3);color:var(--secondary);border:1px solid var(--border)}
-.btn-secondary:hover{background:var(--surface2)}
-.btn-post{background:#1DA1F2;color:#fff;width:100%;margin-top:10px}
-.btn-post:hover{background:#1a8cd8}
-.btn-post:disabled{background:#555;cursor:not-allowed}
+.btn-red{background:var(--red);color:#fff;width:100%}
+.btn-red:hover{background:#c8000a}
+.btn-red:active{transform:scale(.97)}
+.btn-red:disabled{background:#444;color:#888;cursor:not-allowed}
+.btn-blue{background:#1DA1F2;color:#fff;width:100%;margin-top:10px}
+.btn-blue:hover{background:#1a8cd8}
+.btn-blue:disabled{background:#444;color:#888;cursor:not-allowed}
 
-/* RIGHT PANEL */
+/* PREVIEW */
 .preview-area{display:flex;flex-direction:column;gap:16px}
 .radar-container{background:var(--surface2);border:1px solid var(--border);border-radius:10px;
-  overflow:hidden;text-align:center;min-height:320px;display:flex;align-items:center;justify-content:center}
-.radar-container img{width:100%;max-width:560px;display:block}
-.radar-placeholder{color:var(--muted);font-size:14px;padding:40px}
+  overflow:hidden;text-align:center;min-height:300px;display:flex;align-items:center;justify-content:center}
+.radar-container img{width:100%;max-width:580px;display:block}
+.radar-placeholder{color:var(--muted);font-size:14px;padding:40px;line-height:1.8}
 
-.narrative-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;position:relative}
-.narrative-box textarea{
-  width:100%;background:transparent;border:none;color:var(--secondary);
-  font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.65;
-  resize:vertical;min-height:120px;outline:none;
-}
+/* NARRATIVE */
+.narrative-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px}
+.narrative-box textarea{width:100%;background:transparent;border:none;color:var(--secondary);
+  font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.65;resize:vertical;
+  min-height:120px;outline:none}
 .char-count{font-size:11px;color:var(--muted);text-align:right;margin-top:4px}
 
-.status-bar{padding:10px 14px;border-radius:8px;font-size:13px;text-align:center;display:none}
-.status-bar.success{background:rgba(0,200,100,.12);border:1px solid rgba(0,200,100,.3);color:#00c864;display:block}
+/* STATUS */
+.status-bar{padding:10px 14px;border-radius:8px;font-size:13px;text-align:center;display:none;margin-top:10px}
+.status-bar.success{background:rgba(0,200,100,.1);border:1px solid rgba(0,200,100,.3);color:#00c864;display:block}
 .status-bar.error{background:rgba(239,1,7,.1);border:1px solid rgba(239,1,7,.3);color:#ff6b6b;display:block}
-.status-bar.loading{background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--secondary);display:block}
-
-/* STATS ROW */
-.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
-.stat-card{background:var(--surface3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center}
-.stat-val{font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;color:var(--text)}
-.stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
-
-/* SPINNER */
-.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);
-  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
-@keyframes spin{to{transform:rotate(360deg)}}
+.status-bar.loading{background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--secondary);display:block}
 
 /* METRIC BARS */
-.metric-list{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.metric-list{display:flex;flex-direction:column;gap:7px;margin-top:8px}
 .metric-row{display:flex;align-items:center;gap:8px}
 .metric-name{font-size:11px;color:var(--muted);width:100px;font-family:'Oswald',sans-serif;
-  text-transform:uppercase;letter-spacing:.4px}
+  text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
 .metric-track{flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;position:relative}
-.metric-fill-a{height:100%;background:var(--red);border-radius:3px;transition:width .8s cubic-bezier(.22,.68,0,1.2)}
-.metric-fill-b{height:100%;background:#4A90D9;border-radius:3px;transition:width .8s cubic-bezier(.22,.68,0,1.2);
-  position:absolute;top:0;left:0;opacity:.6}
-.metric-pct{font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;color:var(--text);width:26px;text-align:right}
+.mf-a{height:100%;background:var(--red);border-radius:3px;transition:width .8s cubic-bezier(.22,.68,0,1.2)}
+.mf-b{height:100%;background:#4A90D9;border-radius:3px;transition:width .8s cubic-bezier(.22,.68,0,1.2);
+  position:absolute;top:0;left:0;opacity:.55}
+.metric-pct{font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;color:var(--red);width:26px;text-align:right}
 .metric-pct-b{font-family:'Oswald',sans-serif;font-size:11px;color:#4A90D9;width:26px;text-align:right}
 
-input[type=text]::placeholder{color:var(--muted)}
+/* SCHEDULE STATUS PANEL */
+.sched-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.sched-slots{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.sched-slot{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--surface2);border-radius:8px;border:1px solid var(--border)}
+.sched-time{font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;color:var(--red);width:52px}
+.sched-type{font-size:12px;color:var(--secondary);flex:1}
+.sched-dot{width:8px;height:8px;border-radius:50%;background:#444;flex-shrink:0}
+.sched-dot.fired{background:#00c864}
+.sched-dot.next{background:var(--gold);animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:10px;text-align:center}
+.stat-val{font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;color:var(--text)}
+.stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
+
+.log-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;font-size:11px;color:var(--muted);font-family:monospace;
+  max-height:160px;overflow-y:auto;line-height:1.7}
+.log-box div{border-bottom:1px solid rgba(255,255,255,.04);padding:2px 0}
+.log-box div:last-child{border:none}
+
+/* SPINNER */
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
 .hidden{display:none}
 </style>
 </head>
@@ -184,8 +389,7 @@ input[type=text]::placeholder{color:var(--muted)}
 <div class="header">
   <svg class="crest" viewBox="0 0 40 40" fill="none">
     <circle cx="20" cy="20" r="19" fill="#EF0107" stroke="#9B0005" stroke-width="1"/>
-    <path d="M20 5 L25 12 L33 10 L29 18 L35 24 L27 23 L25 31 L20 26 L15 31 L13 23 L5 24 L11 18 L7 10 L15 12 Z"
-          fill="#DB9C33"/>
+    <path d="M20 5L25 12L33 10L29 18L35 24L27 23L25 31L20 26L15 31L13 23L5 24L11 18L7 10L15 12Z" fill="#DB9C33"/>
     <circle cx="20" cy="20" r="4" fill="#0A0A0A"/>
     <circle cx="20" cy="20" r="2.5" fill="#EF0107"/>
   </svg>
@@ -193,96 +397,123 @@ input[type=text]::placeholder{color:var(--muted)}
     <h1>Arsenal DataMB X Agent</h1>
     <p>Real Stats · Radar Cards · Auto-Post to X</p>
   </div>
-  <span class="badge">DataMB Style</span>
+  <span class="badge">Live</span>
 </div>
 
 <div class="container">
 
-  <!-- LEFT: Controls -->
-  <div class="panel">
-    <div class="tab-row">
-      <button class="tab active" onclick="switchMode('player',this)">Player vs Player</button>
-      <button class="tab" onclick="switchMode('team',this)">Team vs Team</button>
+  <!-- ── LEFT COLUMN ── -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- Manual post controls -->
+    <div class="panel">
+      <div class="tab-row">
+        <button class="tab active" onclick="switchMode('player',this)">Player vs Player</button>
+        <button class="tab" onclick="switchMode('team',this)">Team vs Team</button>
+      </div>
+
+      <!-- Player mode -->
+      <div id="mode-player">
+        <div class="section-label">Arsenal Player</div>
+        <select id="arsenal-player">
+          <option value="">— Select player —</option>
+          {% for key, info in arsenal_squad.items() %}
+          <option value="{{ key }}">{{ info.name }} ({{ info.pos }})</option>
+          {% endfor %}
+        </select>
+
+        <div class="section-label">Rival Player</div>
+        <input type="text" id="rival-player" placeholder="e.g. Mohamed Salah">
+
+        <div class="section-label">Rival Team (helps search)</div>
+        <select id="rival-team-player">
+          <option value="">— Any team —</option>
+          {% for name, info in rival_teams.items() %}
+          <option value="{{ info.id }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Team mode -->
+      <div id="mode-team" class="hidden">
+        <div class="section-label">Arsenal vs</div>
+        <select id="rival-team-team">
+          <option value="">— Select rival team —</option>
+          {% for name in rival_teams.keys() %}
+          <option value="{{ name }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Tone -->
+      <div class="section-label">Narrative Tone</div>
+      <div class="tone-grid">
+        <button class="tone-btn active" data-tone="hype"       onclick="setTone(this)">🔥 Hype</button>
+        <button class="tone-btn"        data-tone="analytical" onclick="setTone(this)">📊 Analytical</button>
+        <button class="tone-btn"        data-tone="banter"     onclick="setTone(this)">😈 Banter</button>
+        <button class="tone-btn"        data-tone="historic"   onclick="setTone(this)">🏆 Historic</button>
+        <button class="tone-btn"        data-tone="tactical"   onclick="setTone(this)">🧠 Tactical</button>
+      </div>
+
+      <div class="section-label">Custom Note (optional)</div>
+      <input type="text" id="custom-note" placeholder="e.g. Rice best CDM in Europe">
+
+      <button class="btn btn-red" id="gen-btn" onclick="generate()">
+        Generate Radar + Post ↗
+      </button>
     </div>
 
-    <!-- PLAYER MODE -->
-    <div id="player-mode">
-      <div class="section-label">Arsenal Player</div>
-      <select id="arsenal-player">
-        <option value="">— Select Arsenal Player —</option>
-        {% for key, info in arsenal_squad.items() %}
-        <option value="{{ key }}">{{ info.name }} ({{ info.pos }})</option>
-        {% endfor %}
-      </select>
+    <!-- Schedule status -->
+    <div class="sched-panel">
+      <div class="section-label">Auto-Schedule (UTC)</div>
+      <div class="sched-slots" id="sched-slots"></div>
 
-      <div class="section-label">Rival Player</div>
-      <input type="text" id="rival-player-name" placeholder="e.g. Mohamed Salah">
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="stat-val" id="stat-today">—</div>
+          <div class="stat-lbl">Today</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="stat-last">—</div>
+          <div class="stat-lbl">Last post</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="stat-next">—</div>
+          <div class="stat-lbl">Next slot</div>
+        </div>
+      </div>
 
-      <div class="section-label" style="margin-top:4px">Rival Team (helps search)</div>
-      <select id="rival-player-team">
-        <option value="">— Any team —</option>
-        {% for name, info in rival_teams.items() %}
-        <option value="{{ info.id }}">{{ name }}</option>
-        {% endfor %}
-      </select>
+      <div class="section-label">Activity log</div>
+      <div class="log-box" id="log-box">Waiting for activity...</div>
     </div>
 
-    <!-- TEAM MODE -->
-    <div id="team-mode" class="hidden">
-      <div class="section-label">Arsenal vs</div>
-      <select id="rival-team">
-        <option value="">— Select Rival Team —</option>
-        {% for name in rival_teams.keys() %}
-        <option value="{{ name }}">{{ name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <!-- TONE -->
-    <div class="section-label" style="margin-top:6px">Narrative Tone</div>
-    <div class="tone-grid">
-      <button class="tone-btn active" data-tone="hype" onclick="setTone(this)">🔥 Hype</button>
-      <button class="tone-btn" data-tone="analytical" onclick="setTone(this)">📊 Analytical</button>
-      <button class="tone-btn" data-tone="banter" onclick="setTone(this)">😈 Banter</button>
-      <button class="tone-btn" data-tone="historic" onclick="setTone(this)">🏆 Historic</button>
-      <button class="tone-btn" data-tone="tactical" onclick="setTone(this)">🧠 Tactical</button>
-    </div>
-
-    <div class="section-label">Custom Note (optional)</div>
-    <input type="text" id="custom-note" placeholder="e.g. Rice best CDM in Europe">
-
-    <button class="btn btn-primary" id="generate-btn" onclick="generate()">
-      Generate Radar + Post ↗
-    </button>
   </div>
 
-  <!-- RIGHT: Preview + Post -->
+  <!-- ── RIGHT COLUMN ── -->
   <div class="preview-area">
 
-    <!-- Radar Image -->
     <div class="panel" style="padding:0;overflow:hidden">
-      <div class="radar-container" id="radar-container">
-        <div class="radar-placeholder">⚽ Select players/teams and click Generate</div>
+      <div class="radar-container" id="radar-box">
+        <div class="radar-placeholder">
+          ⚽ Select a player or team comparison<br>and click Generate
+        </div>
       </div>
     </div>
 
-    <!-- Metric Bars -->
     <div class="panel hidden" id="metrics-panel">
       <div class="section-label" id="metrics-title">Percentile Rankings</div>
       <div class="metric-list" id="metric-bars"></div>
     </div>
 
-    <!-- Narrative -->
     <div class="panel">
       <div class="section-label">X Post Draft</div>
       <div class="narrative-box">
-        <textarea id="narrative-text" placeholder="Your Arsenal-biased post will appear here after generating..."></textarea>
+        <textarea id="narrative-text"
+          placeholder="Your Arsenal post will appear here after generating..."></textarea>
         <div class="char-count"><span id="char-count">0</span> chars</div>
       </div>
-
       <div id="status-bar" class="status-bar"></div>
-
-      <button class="btn btn-post" id="post-btn" onclick="confirmPost()" disabled>
+      <button class="btn btn-blue" id="post-btn" onclick="confirmPost()" disabled>
         Post to X 🐦
       </button>
     </div>
@@ -291,16 +522,18 @@ input[type=text]::placeholder{color:var(--muted)}
 </div>
 
 <script>
+const SCHEDULE = {{ schedule_json }};
 let currentMode = 'player';
 let currentTone = 'hype';
 let pendingImage = null;
 
+// ── Mode / tone ──────────────────────────────────────────────────────
 function switchMode(mode, btn) {
   currentMode = mode;
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('player-mode').classList.toggle('hidden', mode !== 'player');
-  document.getElementById('team-mode').classList.toggle('hidden', mode !== 'team');
+  document.getElementById('mode-player').classList.toggle('hidden', mode !== 'player');
+  document.getElementById('mode-team').classList.toggle('hidden',   mode !== 'team');
 }
 
 function setTone(btn) {
@@ -313,36 +546,33 @@ document.getElementById('narrative-text').addEventListener('input', function() {
   document.getElementById('char-count').textContent = this.value.length;
 });
 
+// ── Generate ─────────────────────────────────────────────────────────
 async function generate() {
-  const btn = document.getElementById('generate-btn');
-  const radarBox = document.getElementById('radar-container');
-  const statusBar = document.getElementById('status-bar');
-
+  const btn    = document.getElementById('gen-btn');
+  const radar  = document.getElementById('radar-box');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Fetching stats...';
-  statusBar.className = 'status-bar loading';
-  statusBar.textContent = '⏳ Fetching real PL stats from API-Football...';
-  radarBox.innerHTML = '<div class="radar-placeholder">⏳ Generating radar card...</div>';
+  showStatus('loading', '⏳ Fetching PL stats from API-Football...');
+  radar.innerHTML = '<div class="radar-placeholder">⏳ Building radar card...</div>';
 
-  let payload = { tone: currentTone, custom_note: document.getElementById('custom-note').value };
+  const payload = {
+    tone: currentTone,
+    custom_note: document.getElementById('custom-note').value,
+  };
 
   if (currentMode === 'player') {
-    payload.mode = 'player';
+    payload.mode         = 'player';
     payload.arsenal_player = document.getElementById('arsenal-player').value;
-    payload.rival_player   = document.getElementById('rival-player-name').value;
-    payload.rival_team_id  = document.getElementById('rival-player-team').value || null;
+    payload.rival_player   = document.getElementById('rival-player').value;
+    payload.rival_team_id  = document.getElementById('rival-team-player').value || null;
     if (!payload.arsenal_player) {
-      showStatus('error', '❌ Please select an Arsenal player');
-      btn.disabled = false; btn.textContent = 'Generate Radar + Post ↗';
-      return;
+      showStatus('error', '❌ Select an Arsenal player'); resetBtn(); return;
     }
   } else {
-    payload.mode = 'team';
-    payload.rival_team = document.getElementById('rival-team').value;
+    payload.mode       = 'team';
+    payload.rival_team = document.getElementById('rival-team-team').value;
     if (!payload.rival_team) {
-      showStatus('error', '❌ Please select a rival team');
-      btn.disabled = false; btn.textContent = 'Generate Radar + Post ↗';
-      return;
+      showStatus('error', '❌ Select a rival team'); resetBtn(); return;
     }
   }
 
@@ -350,49 +580,50 @@ async function generate() {
     const resp = await fetch('/generate', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
     const data = await resp.json();
 
     if (data.error) {
       showStatus('error', '❌ ' + data.error);
     } else {
-      // Show radar image
-      radarBox.innerHTML = `<img src="data:image/png;base64,${data.image_b64}" alt="Radar Chart">`;
-      pendingImage = data.image_b64;
+      radar.innerHTML = `<img src="data:image/png;base64,${data.image_b64}" alt="Radar">`;
+      pendingImage    = data.image_b64;
 
-      // Narrative
-      const textarea = document.getElementById('narrative-text');
-      textarea.value = data.narrative;
+      const ta = document.getElementById('narrative-text');
+      ta.value = data.narrative;
       document.getElementById('char-count').textContent = data.narrative.length;
 
-      // Metric bars
       renderMetricBars(data.labels, data.values_a, data.values_b,
                        data.arsenal_name, data.rival_name);
 
       document.getElementById('post-btn').disabled = false;
-      showStatus('success', '✅ Radar generated! Edit the post draft, then click Post to X.');
+      showStatus('success', '✅ Radar ready! Edit the draft then click Post to X.');
     }
   } catch(e) {
-    showStatus('error', '❌ Network error: ' + e.message);
+    showStatus('error', '❌ ' + e.message);
   }
-
-  btn.disabled = false;
-  btn.innerHTML = 'Generate Radar + Post ↗';
+  resetBtn();
 }
 
-function renderMetricBars(labels, valsA, valsB, nameA, nameB) {
+function resetBtn() {
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = false;
+  btn.textContent = 'Generate Radar + Post ↗';
+}
+
+// ── Metric bars ───────────────────────────────────────────────────────
+function renderMetricBars(labels, vA, vB, nameA, nameB) {
   const panel = document.getElementById('metrics-panel');
   const title = document.getElementById('metrics-title');
-  const container = document.getElementById('metric-bars');
+  const box   = document.getElementById('metric-bars');
 
-  title.textContent = nameA + (nameB ? ' (🔴) vs ' + nameB + ' (🔵)' : ' · Percentile Rankings');
-  container.innerHTML = '';
+  title.textContent = nameA + (nameB ? ' 🔴 vs ' + nameB + ' 🔵' : ' · Percentile Rankings');
+  box.innerHTML = '';
 
   labels.forEach((lbl, i) => {
-    const a = Math.round(valsA[i] || 0);
-    const b = valsB ? Math.round(valsB[i] || 0) : null;
-
+    const a = Math.round(vA[i] || 0);
+    const b = vB ? Math.round(vB[i] || 0) : null;
     const row = document.createElement('div');
     row.className = 'metric-row';
 
@@ -400,30 +631,27 @@ function renderMetricBars(labels, valsA, valsB, nameA, nameB) {
       row.innerHTML = `
         <span class="metric-name">${lbl}</span>
         <div class="metric-track">
-          <div class="metric-fill-b" style="width:${b}%"></div>
-          <div class="metric-fill-a" style="width:${a}%;position:absolute;top:0;left:0"></div>
+          <div class="mf-b" style="width:${b}%"></div>
+          <div class="mf-a" style="width:${a}%;position:absolute;top:0;left:0"></div>
         </div>
-        <span class="metric-pct" style="color:var(--red)">${a}</span>
-        <span class="metric-pct-b">${b}</span>
-      `;
+        <span class="metric-pct">${a}</span>
+        <span class="metric-pct-b">${b}</span>`;
     } else {
       row.innerHTML = `
         <span class="metric-name">${lbl}</span>
-        <div class="metric-track"><div class="metric-fill-a" style="width:${a}%"></div></div>
-        <span class="metric-pct">${a}</span>
-      `;
+        <div class="metric-track"><div class="mf-a" style="width:${a}%"></div></div>
+        <span class="metric-pct">${a}</span>`;
     }
-    container.appendChild(row);
+    box.appendChild(row);
   });
-
   panel.classList.remove('hidden');
 }
 
+// ── Post to X ─────────────────────────────────────────────────────────
 async function confirmPost() {
   if (!pendingImage) { showStatus('error', '❌ Generate a radar first'); return; }
-
   const narrative = document.getElementById('narrative-text').value.trim();
-  if (!narrative) { showStatus('error', '❌ Post text cannot be empty'); return; }
+  if (!narrative)  { showStatus('error', '❌ Post text is empty'); return; }
 
   const btn = document.getElementById('post-btn');
   btn.disabled = true;
@@ -434,15 +662,15 @@ async function confirmPost() {
     const resp = await fetch('/post', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ narrative, image_b64: pendingImage })
+      body: JSON.stringify({ narrative, image_b64: pendingImage }),
     });
     const data = await resp.json();
     if (data.success) {
-      showStatus('success',
-        `✅ Posted! View: https://twitter.com/user/status/${data.tweet_id}`);
+      showStatus('success', `✅ Posted! https://twitter.com/i/status/${data.tweet_id}`);
       btn.textContent = '✅ Posted!';
+      refreshStatus();
     } else {
-      showStatus('error', '❌ Post failed: ' + data.error);
+      showStatus('error', '❌ ' + data.error);
       btn.disabled = false;
       btn.textContent = 'Post to X 🐦';
     }
@@ -458,47 +686,105 @@ function showStatus(type, msg) {
   bar.className = 'status-bar ' + type;
   bar.textContent = msg;
 }
+
+// ── Schedule panel ────────────────────────────────────────────────────
+function renderScheduleSlots(state) {
+  const box   = document.getElementById('sched-slots');
+  const nowUTC = new Date().toLocaleTimeString('en-GB',
+    {timeZone:'UTC', hour:'2-digit', minute:'2-digit'});
+
+  let nextSlot = null;
+  let minDiff  = Infinity;
+
+  SCHEDULE.forEach(([t]) => {
+    const [h, m] = t.split(':').map(Number);
+    const [nh, nm] = nowUTC.split(':').map(Number);
+    let diff = (h * 60 + m) - (nh * 60 + nm);
+    if (diff < 0) diff += 1440;
+    if (diff < minDiff) { minDiff = diff; nextSlot = t; }
+  });
+
+  box.innerHTML = SCHEDULE.map(([t, mode]) => {
+    const isNext = t === nextSlot;
+    return `
+      <div class="sched-slot">
+        <span class="sched-time">${t}</span>
+        <span class="sched-type">${mode === 'player' ? '⚽ Player vs player' : '🏟️ Team vs team'} — auto</span>
+        <span class="sched-dot ${isNext ? 'next' : ''}"></span>
+      </div>`;
+  }).join('');
+
+  document.getElementById('stat-today').textContent = state.daily_count || 0;
+
+  if (state.last_posted_at) {
+    const d = new Date(state.last_posted_at);
+    document.getElementById('stat-last').textContent =
+      d.toLocaleTimeString('en-GB', {timeZone:'UTC', hour:'2-digit', minute:'2-digit'}) + ' UTC';
+  } else {
+    document.getElementById('stat-last').textContent = '—';
+  }
+
+  document.getElementById('stat-next').textContent = nextSlot ? nextSlot + ' UTC' : '—';
+
+  if (state.log && state.log.length) {
+    const logBox = document.getElementById('log-box');
+    logBox.innerHTML = [...state.log].reverse()
+      .map(l => `<div>${l}</div>`).join('');
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/status');
+    const d = await r.json();
+    renderScheduleSlots(d);
+  } catch(e) {}
+}
+
+// Poll status every 15 s
+refreshStatus();
+setInterval(refreshStatus, 15000);
 </script>
 </body>
 </html>
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ROUTES
+# FLASK APP
 # ─────────────────────────────────────────────────────────────────────────────
+
+app = Flask(__name__)
+
 
 @app.route("/")
 def index():
+    import json
     return render_template_string(
         HTML,
         arsenal_squad=ARSENAL_SQUAD,
         rival_teams=RIVAL_TEAMS,
+        schedule_json=json.dumps(SCHEDULE),
     )
 
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    data = request.get_json()
+    data        = request.get_json()
     mode        = data.get("mode", "player")
     tone        = data.get("tone", "hype")
     custom_note = data.get("custom_note", "")
 
     if mode == "player":
-        arsenal_key    = data.get("arsenal_player", "")
-        rival_name     = data.get("rival_player", "")
-        rival_team_id  = data.get("rival_team_id")
-
         result = agent.build_player_comparison(
-            arsenal_key=arsenal_key,
-            rival_name=rival_name,
-            rival_team_id=int(rival_team_id) if rival_team_id else None,
+            arsenal_key=data.get("arsenal_player", ""),
+            rival_name=data.get("rival_player", ""),
+            rival_team_id=int(data["rival_team_id"]) if data.get("rival_team_id") else None,
             tone=tone,
             custom_note=custom_note,
         )
     else:
-        rival_team = data.get("rival_team", "")
         result = agent.build_team_comparison(
-            rival_team_key=rival_team,
+            rival_team_key=data.get("rival_team", ""),
             tone=tone,
             custom_note=custom_note,
         )
@@ -506,20 +792,17 @@ def generate():
     if "error" in result:
         return jsonify({"error": result["error"]})
 
-    # Store in pending (thread-safe)
-    with _lock:
+    with _pending_lock:
         _pending["image_bytes"] = result["image_bytes"]
 
-    img_b64 = base64.b64encode(result["image_bytes"]).decode("utf-8")
-
     return jsonify({
-        "image_b64":   img_b64,
-        "narrative":   result["narrative"],
-        "labels":      result["labels"],
-        "values_a":    result["values_a"],
-        "values_b":    result.get("values_b"),
+        "image_b64":    base64.b64encode(result["image_bytes"]).decode(),
+        "narrative":    result["narrative"],
+        "labels":       result["labels"],
+        "values_a":     result["values_a"],
+        "values_b":     result.get("values_b"),
         "arsenal_name": result["arsenal_name"],
-        "rival_name":  result.get("rival_name"),
+        "rival_name":   result.get("rival_name"),
     })
 
 
@@ -535,18 +818,35 @@ def post():
     try:
         image_bytes = base64.b64decode(img_b64)
     except Exception:
-        with _lock:
+        with _pending_lock:
             image_bytes = _pending.get("image_bytes")
         if not image_bytes:
             return jsonify({"success": False, "error": "No image available"})
 
     result = agent.post_to_x(narrative, image_bytes)
+
+    if result["success"]:
+        with _sched_lock:
+            _sched_state["last_posted_at"] = datetime.now(pytz.UTC).isoformat()
+            _sched_state["last_post_type"] = "manual"
+            _sched_state["last_tweet_id"]  = result["tweet_id"]
+            _sched_state["daily_count"]   += 1
+        _sched_log(f"✅ Manual post → tweet {result['tweet_id']}")
+
     return jsonify(result)
+
+
+@app.route("/status")
+def status():
+    with _sched_lock:
+        return jsonify(dict(_sched_state))
 
 
 @app.route("/health")
 def health():
-    return "Arsenal DataMB X Agent: RUNNING", 200
+    with _sched_lock:
+        count = _sched_state["daily_count"]
+    return f"Arsenal DataMB Agent RUNNING | posts today: {count}", 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -554,5 +854,11 @@ def health():
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # Start scheduler in background thread
+    t = threading.Thread(target=scheduler_loop, daemon=True)
+    t.start()
+    logger.info("✅ Arsenal DataMB X Agent starting")
+    logger.info(f"📅 Schedule: {SCHEDULE}")
+
     port = int(os.environ.get("PORT", 5001))
     app.run(host="0.0.0.0", port=port, debug=False)
