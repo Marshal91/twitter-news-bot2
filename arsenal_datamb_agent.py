@@ -408,28 +408,28 @@ LEAGUE_NAMES = {
     39: "Premier League",
 }
 
-# Fallback hardcoded EPL rival teams — used if API fetch fails
-# All 20 Premier League teams (excluding Arsenal)
+# Fallback hardcoded EPL rival teams — names match API-Football exactly
+# Based on confirmed /debug/teams output
 _FALLBACK_RIVAL_TEAMS = {
-    "Aston Villa":              {"id": 66,  "league": 39, "colour": "#670E36"},
-    "Bournemouth":              {"id": 35,  "league": 39, "colour": "#DA291C"},
-    "Brentford":                {"id": 55,  "league": 39, "colour": "#E30613"},
-    "Brighton & Hove Albion":   {"id": 51,  "league": 39, "colour": "#0057B8"},
-    "Burnley":                  {"id": 44,  "league": 39, "colour": "#6C1D45"},
-    "Chelsea":                  {"id": 49,  "league": 39, "colour": "#034694"},
-    "Crystal Palace":           {"id": 52,  "league": 39, "colour": "#1B458F"},
-    "Everton":                  {"id": 45,  "league": 39, "colour": "#003399"},
-    "Fulham":                   {"id": 36,  "league": 39, "colour": "#CC0000"},
-    "Leeds United":             {"id": 63,  "league": 39, "colour": "#FFCD00"},
-    "Liverpool":                {"id": 40,  "league": 39, "colour": "#C8102E"},
-    "Manchester City":          {"id": 50,  "league": 39, "colour": "#6CABDD"},
-    "Manchester United":        {"id": 33,  "league": 39, "colour": "#DA291C"},
-    "Newcastle United":         {"id": 34,  "league": 39, "colour": "#241F20"},
-    "Nottingham Forest":        {"id": 65,  "league": 39, "colour": "#DD0000"},
-    "Sunderland":               {"id": 71,  "league": 39, "colour": "#EB172B"},
-    "Tottenham Hotspur":        {"id": 47,  "league": 39, "colour": "#132257"},
-    "West Ham United":          {"id": 48,  "league": 39, "colour": "#7A263A"},
-    "Wolverhampton Wanderers":  {"id": 39,  "league": 39, "colour": "#FDB913"},
+    "Aston Villa":      {"id": 66,  "league": 39, "colour": "#670E36"},
+    "Bournemouth":      {"id": 35,  "league": 39, "colour": "#DA291C"},
+    "Brentford":        {"id": 55,  "league": 39, "colour": "#E30613"},
+    "Brighton":         {"id": 51,  "league": 39, "colour": "#0057B8"},
+    "Chelsea":          {"id": 49,  "league": 39, "colour": "#034694"},
+    "Crystal Palace":   {"id": 52,  "league": 39, "colour": "#1B458F"},
+    "Everton":          {"id": 45,  "league": 39, "colour": "#003399"},
+    "Fulham":           {"id": 36,  "league": 39, "colour": "#CC0000"},
+    "Ipswich":          {"id": 57,  "league": 39, "colour": "#3A64A3"},
+    "Leicester":        {"id": 46,  "league": 39, "colour": "#003090"},
+    "Liverpool":        {"id": 40,  "league": 39, "colour": "#C8102E"},
+    "Manchester City":  {"id": 50,  "league": 39, "colour": "#6CABDD"},
+    "Manchester United":{"id": 33,  "league": 39, "colour": "#DA291C"},
+    "Newcastle":        {"id": 34,  "league": 39, "colour": "#241F20"},
+    "Nottingham Forest":{"id": 65,  "league": 39, "colour": "#DD0000"},
+    "Southampton":      {"id": 41,  "league": 39, "colour": "#D71920"},
+    "Tottenham":        {"id": 47,  "league": 39, "colour": "#132257"},
+    "West Ham":         {"id": 48,  "league": 39, "colour": "#7A263A"},
+    "Wolves":           {"id": 39,  "league": 39, "colour": "#FDB913"},
 }
 
 # Fallback Arsenal squad (used if API fetch fails)
