@@ -483,9 +483,18 @@ async function generate() {
     payload.mode = 'player';
     var sel = document.getElementById('arsenal-player');
     var opt = sel.options[sel.selectedIndex];
-    payload.arsenal_player_id   = opt ? parseInt(opt.value) : 0;
-    payload.arsenal_player_name = opt ? opt.dataset.name : '';
-    payload.arsenal_pos         = opt ? opt.dataset.pos  : 'MF';
+    if (!opt || !opt.value) { showStatus('error','Select an Arsenal player'); resetBtn(); return; }
+    try {
+      var pdata = JSON.parse(opt.dataset.json.replace(/&quot;/g, '"'));
+      payload.arsenal_player_id   = pdata.id;
+      payload.arsenal_player_name = pdata.name;
+      payload.arsenal_pos         = pdata.pos;
+    } catch(e) {
+      // Fallback to value only
+      payload.arsenal_player_id   = parseInt(opt.value);
+      payload.arsenal_player_name = opt.textContent.split(' (')[0];
+      payload.arsenal_pos         = 'MF';
+    }
     var selVal    = document.getElementById('rival-player-select').value;
     var manualVal = document.getElementById('rival-player-manual').value.trim();
     payload.rival_player  = selVal || manualVal;
@@ -618,13 +627,22 @@ app = Flask(__name__)
 @app.route("/")
 def index():
     # Build Arsenal player options from live squad cache
+    # Store id/pos/name as a JSON data attribute to avoid HTML escaping issues
     def afc_opts(api_positions):
-        return "\n".join(
-            f'<option value="{p["id"]}" data-pos="{p["pos"]}" data-name="{p["name"]}">'
-            f'{p["name"]} ({p["pos"]})</option>'
-            for p in agent.arsenal_squad
-            if p.get("api_pos", p["pos"]) in api_positions
-        )
+        lines = []
+        for p in agent.arsenal_squad:
+            if p.get("api_pos", p["pos"]) not in api_positions:
+                continue
+            # Use data-json to avoid apostrophe/special char issues in attributes
+            import json as _json
+            data = _json.dumps({"id": p["id"], "name": p["name"], "pos": p["pos"]})
+            # Escape for HTML attribute
+            data = data.replace('"', "&quot;")
+            lines.append(
+                f'<option value="{p["id"]}" data-json="{data}">'
+                f'{p["name"]} ({p["pos"]})</option>'
+            )
+        return "\n".join(lines)
 
     # Build rival team options from live cache
     def team_player_opts(league_id):
@@ -659,6 +677,11 @@ def debug_teams():
     return jsonify({"count": len(teams), "teams": teams})
 
 
+@app.route("/debug/squad")
+def debug_squad():
+    return jsonify({"count": len(agent.arsenal_squad), "squad": agent.arsenal_squad})
+
+
 @app.route("/squad/<int:team_id>")
 def squad(team_id):
     """Returns live squad for any team via cache."""
@@ -668,65 +691,84 @@ def squad(team_id):
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    data        = request.get_json()
-    mode        = data.get("mode", "player")
-    tone        = data.get("tone", "hype")
-    custom_note = data.get("custom_note", "")
+    try:
+        data        = request.get_json(force=True, silent=True) or {}
+        mode        = data.get("mode", "player")
+        tone        = data.get("tone", "hype")
+        custom_note = data.get("custom_note", "")
 
-    if mode == "player":
-        rival_team_id = data.get("rival_team_id")
-        result = agent.build_player_comparison(
-            arsenal_player_id=int(data.get("arsenal_player_id", 0)),
-            arsenal_player_name=data.get("arsenal_player_name", ""),
-            arsenal_pos=data.get("arsenal_pos", "MF"),
-            rival_name=data.get("rival_player", ""),
-            rival_team_id=int(rival_team_id) if rival_team_id else None,
-            tone=tone,
-            custom_note=custom_note,
-        )
-    else:
-        result = agent.build_team_comparison(
-            rival_team_key=data.get("rival_team", ""),
-            tone=tone,
-            custom_note=custom_note,
-        )
+        logger.info(f"Generate request: mode={mode} tone={tone} data_keys={list(data.keys())}")
 
-    if "error" in result:
-        return jsonify({"error": result["error"]})
+        if mode == "player":
+            rival_team_id = data.get("rival_team_id")
+            player_id = data.get("arsenal_player_id")
+            if not player_id:
+                return jsonify({"error": "No Arsenal player selected"})
 
-    with _pending_lock:
-        _pending["image_bytes"] = result["image_bytes"]
+            result = agent.build_player_comparison(
+                arsenal_player_id=int(player_id),
+                arsenal_player_name=data.get("arsenal_player_name", "Unknown"),
+                arsenal_pos=data.get("arsenal_pos", "MF"),
+                rival_name=data.get("rival_player", ""),
+                rival_team_id=int(rival_team_id) if rival_team_id else None,
+                tone=tone,
+                custom_note=custom_note,
+            )
+        else:
+            rival_team = data.get("rival_team", "")
+            if not rival_team:
+                return jsonify({"error": "No rival team selected"})
+            result = agent.build_team_comparison(
+                rival_team_key=rival_team,
+                tone=tone,
+                custom_note=custom_note,
+            )
 
-    return jsonify({
-        "image_b64":    base64.b64encode(result["image_bytes"]).decode(),
-        "narrative":    result["narrative"],
-        "labels":       result["labels"],
-        "values_a":     result["values_a"],
-        "values_b":     result.get("values_b"),
-        "arsenal_name": result["arsenal_name"],
-        "rival_name":   result.get("rival_name"),
-    })
+        if "error" in result:
+            logger.error(f"Build error: {result['error']}")
+            return jsonify({"error": result["error"]})
+
+        with _pending_lock:
+            _pending["image_bytes"] = result["image_bytes"]
+
+        return jsonify({
+            "image_b64":    base64.b64encode(result["image_bytes"]).decode(),
+            "narrative":    result["narrative"],
+            "labels":       result["labels"],
+            "values_a":     result["values_a"],
+            "values_b":     result.get("values_b"),
+            "arsenal_name": result["arsenal_name"],
+            "rival_name":   result.get("rival_name"),
+        })
+
+    except Exception as e:
+        logger.exception(f"Generate route exception: {e}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 
 @app.route("/post", methods=["POST"])
 def post():
-    data      = request.get_json()
-    narrative = data.get("narrative", "").strip()
-    img_b64   = data.get("image_b64", "")
-    if not narrative:
-        return jsonify({"success": False, "error": "Empty narrative"})
     try:
-        image_bytes = base64.b64decode(img_b64)
-    except Exception:
-        with _pending_lock:
-            image_bytes = _pending.get("image_bytes")
-        if not image_bytes:
-            return jsonify({"success": False, "error": "No image available"})
-    result = agent.post_to_x(narrative, image_bytes)
-    if result["success"]:
-        _record_post(result["tweet_id"], "manual")
-        _log(f"Manual post: {result['tweet_id']}")
-    return jsonify(result)
+        data      = request.get_json(force=True, silent=True) or {}
+        narrative = data.get("narrative", "").strip()
+        img_b64   = data.get("image_b64", "")
+        if not narrative:
+            return jsonify({"success": False, "error": "Empty narrative"})
+        try:
+            image_bytes = base64.b64decode(img_b64)
+        except Exception:
+            with _pending_lock:
+                image_bytes = _pending.get("image_bytes")
+            if not image_bytes:
+                return jsonify({"success": False, "error": "No image available"})
+        result = agent.post_to_x(narrative, image_bytes)
+        if result["success"]:
+            _record_post(result["tweet_id"], "manual")
+            _log(f"Manual post: {result['tweet_id']}")
+        return jsonify(result)
+    except Exception as e:
+        logger.exception(f"Post route exception: {e}")
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
 
 @app.route("/status")
