@@ -268,6 +268,532 @@ HTML = r"""
   --secondary:rgba(255,255,255,0.7);
 }
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
+.header{background:linear-gradient(135deg,#0A0A0A 0%,#1a0000 60%,#0d0000 100%);
+  border-bottom:1px solid rgba(239,1,7,.25);padding:14px 24px;
+  display:flex;align-items:center;gap:14px}
+.header h1{font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}
+.header p{font-size:11px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.crest{width:40px;height:40px;flex-shrink:0}
+.badge{margin-left:auto;background:var(--red);color:#fff;font-family:'Oswald',sans-serif;
+  font-size:10px;font-weight:600;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;text-transform:uppercase}
+.container{max-width:1160px;margin:0 auto;padding:20px 16px;
+  display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start}
+@media(max-width:800px){.container{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.section-label{font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.tab-row{display:flex;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tab{flex:1;padding:10px;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;
+  letter-spacing:1px;text-transform:uppercase;color:var(--muted);background:none;border:none;
+  cursor:pointer;border-bottom:2px solid transparent;transition:.2s}
+.tab.active{color:var(--red);border-bottom-color:var(--red)}
+select,input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;
+  padding:9px 11px;outline:none;margin-bottom:10px;transition:border-color .2s;appearance:auto}
+select:focus,input[type=text]:focus{border-color:rgba(239,1,7,.45)}
+select option{background:#1C1C1C;color:#fff}
+select optgroup{background:#141414;color:var(--gold);font-family:'Oswald',sans-serif;font-size:11px}
+input[type=text]::placeholder{color:var(--muted)}
+.tone-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.tone-btn{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  color:var(--secondary);font-size:12px;padding:8px;cursor:pointer;transition:.2s;text-align:center}
+.tone-btn.active{border-color:var(--red);color:var(--text);background:rgba(239,1,7,.12)}
+.tone-btn:hover:not(.active){border-color:rgba(239,1,7,.3)}
+.btn{border:none;border-radius:8px;font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;
+  letter-spacing:1px;text-transform:uppercase;cursor:pointer;padding:10px 18px;transition:.15s}
+.btn-red{background:var(--red);color:#fff;width:100%}
+.btn-red:hover{background:#c8000a}
+.btn-red:active{transform:scale(.97)}
+.btn-red:disabled{background:#444;color:#888;cursor:not-allowed}
+.btn-blue{background:#1DA1F2;color:#fff;width:100%;margin-top:10px}
+.btn-blue:hover{background:#1a8cd8}
+.btn-blue:disabled{background:#444;color:#888;cursor:not-allowed}
+.preview-area{display:flex;flex-direction:column;gap:16px}
+.radar-container{background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+  overflow:hidden;text-align:center;min-height:300px;display:flex;align-items:center;justify-content:center}
+.radar-container img{width:100%;max-width:580px;display:block}
+.radar-placeholder{color:var(--muted);font-size:14px;padding:40px;line-height:1.8}
+.narrative-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px}
+.narrative-box textarea{width:100%;background:transparent;border:none;color:var(--secondary);
+  font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.65;resize:vertical;
+  min-height:120px;outline:none}
+.char-count{font-size:11px;color:var(--muted);text-align:right;margin-top:4px}
+.status-bar{padding:10px 14px;border-radius:8px;font-size:13px;text-align:center;display:none;margin-top:10px}
+.status-bar.success{background:rgba(0,200,100,.1);border:1px solid rgba(0,200,100,.3);color:#00c864;display:block}
+.status-bar.error{background:rgba(239,1,7,.1);border:1px solid rgba(239,1,7,.3);color:#ff6b6b;display:block}
+.status-bar.loading{background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--secondary);display:block}
+.metric-list{display:flex;flex-direction:column;gap:7px;margin-top:8px}
+.metric-row{display:flex;align-items:center;gap:8px}
+.metric-name{font-size:11px;color:var(--muted);width:100px;font-family:'Oswald',sans-serif;
+  text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
+.metric-track{flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;position:relative}
+.mf-a{height:100%;background:var(--red);border-radius:3px;transition:width .8s cubic-bezier(.22,.68,0,1.2)}
+.mf-b{height:100%;background:#4A90D9;border-radius:3px;transition:width .8s cubic-bezier(.22,.68,0,1.2);
+  position:absolute;top:0;left:0;opacity:.55}
+.metric-pct{font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;color:var(--red);width:26px;text-align:right}
+.metric-pct-b{font-family:'Oswald',sans-serif;font-size:11px;color:#4A90D9;width:26px;text-align:right}
+.sched-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.sched-slots{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.sched-slot{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--surface2);border-radius:8px;border:1px solid var(--border)}
+.sched-time{font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;color:var(--red);width:52px}
+.sched-type{font-size:12px;color:var(--secondary);flex:1}
+.sched-dot{width:8px;height:8px;border-radius:50%;background:#444;flex-shrink:0}
+.sched-dot.next{background:var(--gold);animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center}
+.stat-val{font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;color:var(--text)}
+.stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
+.log-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;font-size:11px;color:var(--muted);font-family:monospace;
+  max-height:160px;overflow-y:auto;line-height:1.7}
+.log-box div{border-bottom:1px solid rgba(255,255,255,.04);padding:2px 0}
+.log-box div:last-child{border:none}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.player-loading{font-size:12px;color:var(--muted);padding:4px 0;display:none}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <svg class="crest" viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="19" fill="#EF0107" stroke="#9B0005" stroke-width="1"/>
+    <path d="M20 5L25 12L33 10L29 18L35 24L27 23L25 31L20 26L15 31L13 23L5 24L11 18L7 10L15 12Z" fill="#DB9C33"/>
+    <circle cx="20" cy="20" r="4" fill="#0A0A0A"/>
+    <circle cx="20" cy="20" r="2.5" fill="#EF0107"/>
+  </svg>
+  <div>
+    <h1>Arsenal DataMB X Agent</h1>
+    <p>Real Stats · Radar Cards · Auto-Post to X</p>
+  </div>
+  <span class="badge">Live</span>
+</div>
+
+<div class="container">
+  <div style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- Manual controls -->
+    <div class="panel">
+      <div class="tab-row">
+        <button class="tab active" id="tab-player" onclick="switchMode('player')">Player vs Player</button>
+        <button class="tab"        id="tab-team"   onclick="switchMode('team')">Team vs Team</button>
+      </div>
+
+      <!-- ── PLAYER MODE ── -->
+      <div id="mode-player">
+        <div class="section-label">Arsenal Player</div>
+        <select id="arsenal-player">
+          <option value="">— Select Arsenal player —</option>
+          <optgroup label="Goalkeepers">
+            {% for key, info in arsenal_squad.items() if info.pos == 'GK' %}
+            <option value="{{ key }}">{{ info.name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Defenders">
+            {% for key, info in arsenal_squad.items() if info.pos in ['CB','FB'] %}
+            <option value="{{ key }}">{{ info.name }} ({{ info.pos }})</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Midfielders">
+            {% for key, info in arsenal_squad.items() if info.pos == 'MF' %}
+            <option value="{{ key }}">{{ info.name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Forwards">
+            {% for key, info in arsenal_squad.items() if info.pos in ['WG','ST'] %}
+            <option value="{{ key }}">{{ info.name }} ({{ info.pos }})</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+
+        <div class="section-label">Rival Team</div>
+        <select id="rival-team-for-player" onchange="loadRivalPlayers(this.value)">
+          <option value="">— Select rival team first —</option>
+          <optgroup label="Premier League">
+            {% for name, info in rival_teams.items() if info.league == 39 %}
+            <option value="{{ info.id }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="La Liga">
+            {% for name, info in rival_teams.items() if info.league == 140 %}
+            <option value="{{ info.id }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Bundesliga">
+            {% for name, info in rival_teams.items() if info.league == 78 %}
+            <option value="{{ info.id }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Serie A">
+            {% for name, info in rival_teams.items() if info.league == 135 %}
+            <option value="{{ info.id }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Ligue 1">
+            {% for name, info in rival_teams.items() if info.league == 61 %}
+            <option value="{{ info.id }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+
+        <div class="section-label">Rival Player</div>
+        <div class="player-loading" id="player-loading">
+          <span class="spinner"></span>Loading squad...
+        </div>
+        <select id="rival-player-select" style="display:none">
+          <option value="">— Select rival player —</option>
+        </select>
+        <input type="text" id="rival-player-manual"
+               placeholder="Or type player name manually">
+      </div>
+
+      <!-- ── TEAM MODE ── -->
+      <div id="mode-team" class="hidden">
+        <div class="section-label">Arsenal vs</div>
+        <select id="rival-team-team">
+          <option value="">— Select rival team —</option>
+          <optgroup label="Premier League">
+            {% for name, info in rival_teams.items() if info.league == 39 %}
+            <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="La Liga">
+            {% for name, info in rival_teams.items() if info.league == 140 %}
+            <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Bundesliga">
+            {% for name, info in rival_teams.items() if info.league == 78 %}
+            <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Serie A">
+            {% for name, info in rival_teams.items() if info.league == 135 %}
+            <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Ligue 1">
+            {% for name, info in rival_teams.items() if info.league == 61 %}
+            <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- Tone -->
+      <div class="section-label">Narrative Tone</div>
+      <div class="tone-grid">
+        <button class="tone-btn active" data-tone="hype"       onclick="setTone(this)">🔥 Hype</button>
+        <button class="tone-btn"        data-tone="analytical" onclick="setTone(this)">📊 Analytical</button>
+        <button class="tone-btn"        data-tone="banter"     onclick="setTone(this)">😈 Banter</button>
+        <button class="tone-btn"        data-tone="historic"   onclick="setTone(this)">🏆 Historic</button>
+        <button class="tone-btn"        data-tone="tactical"   onclick="setTone(this)">🧠 Tactical</button>
+      </div>
+
+      <div class="section-label">Custom Note (optional)</div>
+      <input type="text" id="custom-note" placeholder="e.g. Rice best CDM in Europe">
+
+      <button class="btn btn-red" id="gen-btn" onclick="generate()">
+        Generate Radar + Post ↗
+      </button>
+    </div>
+
+    <!-- Schedule panel -->
+    <div class="sched-panel">
+      <div class="section-label">Auto-Schedule (UTC)</div>
+      <div class="sched-slots" id="sched-slots"></div>
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-val" id="stat-today">—</div><div class="stat-lbl">Today</div></div>
+        <div class="stat-box"><div class="stat-val" id="stat-last">—</div><div class="stat-lbl">Last post</div></div>
+        <div class="stat-box"><div class="stat-val" id="stat-next">—</div><div class="stat-lbl">Next slot</div></div>
+      </div>
+      <div class="section-label">Activity log</div>
+      <div class="log-box" id="log-box">Waiting for activity...</div>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="preview-area">
+    <div class="panel" style="padding:0;overflow:hidden">
+      <div class="radar-container" id="radar-box">
+        <div class="radar-placeholder">⚽ Select a player or team comparison<br>and click Generate</div>
+      </div>
+    </div>
+    <div class="panel hidden" id="metrics-panel">
+      <div class="section-label" id="metrics-title">Percentile Rankings</div>
+      <div class="metric-list" id="metric-bars"></div>
+    </div>
+    <div class="panel">
+      <div class="section-label">X Post Draft</div>
+      <div class="narrative-box">
+        <textarea id="narrative-text"
+          placeholder="Your Arsenal post will appear here after generating..."></textarea>
+        <div class="char-count"><span id="char-count">0</span> chars</div>
+      </div>
+      <div id="status-bar" class="status-bar"></div>
+      <button class="btn btn-blue" id="post-btn" onclick="confirmPost()" disabled>
+        Post to X 🐦
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SCHEDULE = {{ schedule_json }};
+let currentMode = 'player';
+let currentTone = 'hype';
+let pendingImage = null;
+
+// ── Tab switching — fixed ─────────────────────────────────────────────
+function switchMode(mode) {
+  currentMode = mode;
+  document.getElementById('tab-player').classList.toggle('active', mode === 'player');
+  document.getElementById('tab-team').classList.toggle('active',   mode === 'team');
+  document.getElementById('mode-player').classList.toggle('hidden', mode !== 'player');
+  document.getElementById('mode-team').classList.toggle('hidden',   mode !== 'team');
+}
+
+function setTone(btn) {
+  document.querySelectorAll('.tone-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentTone = btn.dataset.tone;
+}
+
+document.getElementById('narrative-text').addEventListener('input', function() {
+  document.getElementById('char-count').textContent = this.value.length;
+});
+
+// ── Dynamic rival player dropdown ─────────────────────────────────────
+async function loadRivalPlayers(teamId) {
+  const sel     = document.getElementById('rival-player-select');
+  const loading = document.getElementById('player-loading');
+  const manual  = document.getElementById('rival-player-manual');
+
+  if (!teamId) {
+    sel.style.display = 'none';
+    sel.innerHTML = '<option value="">— Select rival player —</option>';
+    return;
+  }
+
+  loading.style.display = 'block';
+  sel.style.display     = 'none';
+  manual.placeholder    = 'Or type player name manually';
+
+  try {
+    const resp = await fetch(`/squad/${teamId}`);
+    const data = await resp.json();
+
+    sel.innerHTML = '<option value="">— Select rival player —</option>';
+    if (data.players && data.players.length) {
+      // Group by position
+      const groups = {Goalkeeper:[], Defender:[], Midfielder:[], Attacker:[], '':[]};
+      data.players.forEach(p => {
+        const g = groups[p.position] !== undefined ? p.position : '';
+        groups[g].push(p);
+      });
+      const posOrder = ['Goalkeeper','Defender','Midfielder','Attacker',''];
+      posOrder.forEach(pos => {
+        if (!groups[pos] || !groups[pos].length) return;
+        const grp = document.createElement('optgroup');
+        grp.label = pos || 'Other';
+        groups[pos].forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.textContent = p.name;
+          grp.appendChild(opt);
+        });
+        sel.appendChild(grp);
+      });
+      sel.style.display = 'block';
+    } else {
+      manual.placeholder = 'Type rival player name (squad not found)';
+    }
+  } catch(e) {
+    manual.placeholder = 'Type rival player name';
+  }
+
+  loading.style.display = 'none';
+}
+
+// ── Generate ──────────────────────────────────────────────────────────
+async function generate() {
+  const btn   = document.getElementById('gen-btn');
+  const radar = document.getElementById('radar-box');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Fetching stats...';
+  showStatus('loading', '⏳ Fetching stats from API-Football...');
+  radar.innerHTML = '<div class="radar-placeholder">⏳ Building radar card...</div>';
+
+  const payload = {
+    tone: currentTone,
+    custom_note: document.getElementById('custom-note').value,
+  };
+
+  if (currentMode === 'player') {
+    payload.mode          = 'player';
+    payload.arsenal_player = document.getElementById('arsenal-player').value;
+
+    // Rival player: prefer dropdown selection, fall back to manual text
+    const selVal    = document.getElementById('rival-player-select').value;
+    const manualVal = document.getElementById('rival-player-manual').value.trim();
+    payload.rival_player   = selVal || manualVal;
+    payload.rival_team_id  = document.getElementById('rival-team-for-player').value || null;
+
+    if (!payload.arsenal_player) {
+      showStatus('error', '❌ Select an Arsenal player'); resetBtn(); return;
+    }
+  } else {
+    payload.mode       = 'team';
+    payload.rival_team = document.getElementById('rival-team-team').value;
+    if (!payload.rival_team) {
+      showStatus('error', '❌ Select a rival team'); resetBtn(); return;
+    }
+  }
+
+  try {
+    const resp = await fetch('/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      showStatus('error', '❌ ' + data.error);
+    } else {
+      radar.innerHTML = `<img src="data:image/png;base64,${data.image_b64}" alt="Radar">`;
+      pendingImage    = data.image_b64;
+      const ta = document.getElementById('narrative-text');
+      ta.value = data.narrative;
+      document.getElementById('char-count').textContent = data.narrative.length;
+      renderMetricBars(data.labels, data.values_a, data.values_b,
+                       data.arsenal_name, data.rival_name);
+      document.getElementById('post-btn').disabled = false;
+      showStatus('success', '✅ Radar ready! Edit the draft then click Post to X.');
+    }
+  } catch(e) {
+    showStatus('error', '❌ ' + e.message);
+  }
+  resetBtn();
+}
+
+function resetBtn() {
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = false;
+  btn.textContent = 'Generate Radar + Post ↗';
+}
+
+// ── Metric bars ───────────────────────────────────────────────────────
+function renderMetricBars(labels, vA, vB, nameA, nameB) {
+  const panel = document.getElementById('metrics-panel');
+  document.getElementById('metrics-title').textContent =
+    nameA + (nameB ? ' 🔴 vs ' + nameB + ' 🔵' : ' · Percentile Rankings');
+  const box = document.getElementById('metric-bars');
+  box.innerHTML = '';
+  labels.forEach((lbl, i) => {
+    const a = Math.round(vA[i] || 0);
+    const b = vB ? Math.round(vB[i] || 0) : null;
+    const row = document.createElement('div');
+    row.className = 'metric-row';
+    if (b !== null) {
+      row.innerHTML = `<span class="metric-name">${lbl}</span>
+        <div class="metric-track">
+          <div class="mf-b" style="width:${b}%"></div>
+          <div class="mf-a" style="width:${a}%;position:absolute;top:0;left:0"></div>
+        </div>
+        <span class="metric-pct">${a}</span><span class="metric-pct-b">${b}</span>`;
+    } else {
+      row.innerHTML = `<span class="metric-name">${lbl}</span>
+        <div class="metric-track"><div class="mf-a" style="width:${a}%"></div></div>
+        <span class="metric-pct">${a}</span>`;
+    }
+    box.appendChild(row);
+  });
+  panel.classList.remove('hidden');
+}
+
+// ── Post to X ─────────────────────────────────────────────────────────
+async function confirmPost() {
+  if (!pendingImage) { showStatus('error', '❌ Generate a radar first'); return; }
+  const narrative = document.getElementById('narrative-text').value.trim();
+  if (!narrative)  { showStatus('error', '❌ Post text is empty'); return; }
+  const btn = document.getElementById('post-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Posting...';
+  showStatus('loading', '⏳ Uploading image and posting to X...');
+  try {
+    const resp = await fetch('/post', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ narrative, image_b64: pendingImage }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      showStatus('success', `✅ Posted! https://twitter.com/i/status/${data.tweet_id}`);
+      btn.textContent = '✅ Posted!';
+      refreshStatus();
+    } else {
+      showStatus('error', '❌ ' + data.error);
+      btn.disabled = false; btn.textContent = 'Post to X 🐦';
+    }
+  } catch(e) {
+    showStatus('error', '❌ ' + e.message);
+    btn.disabled = false; btn.textContent = 'Post to X 🐦';
+  }
+}
+
+function showStatus(type, msg) {
+  const bar = document.getElementById('status-bar');
+  bar.className = 'status-bar ' + type;
+  bar.textContent = msg;
+}
+
+// ── Schedule panel ────────────────────────────────────────────────────
+function renderScheduleSlots(state) {
+  const nowUTC = new Date().toLocaleTimeString('en-GB',
+    {timeZone:'UTC', hour:'2-digit', minute:'2-digit'});
+  let nextSlot = null, minDiff = Infinity;
+  SCHEDULE.forEach(([t]) => {
+    const [h,m]   = t.split(':').map(Number);
+    const [nh,nm] = nowUTC.split(':').map(Number);
+    let diff = (h*60+m)-(nh*60+nm);
+    if (diff < 0) diff += 1440;
+    if (diff < minDiff) { minDiff = diff; nextSlot = t; }
+  });
+  document.getElementById('sched-slots').innerHTML = SCHEDULE.map(([t, mode]) => `
+    <div class="sched-slot">
+      <span class="sched-time">${t}</span>
+      <span class="sched-type">${mode==='player'?'⚽ Player vs player':'🏟️ Team vs team'} — auto</span>
+      <span class="sched-dot ${t===nextSlot?'next':''}"></span>
+    </div>`).join('');
+  document.getElementById('stat-today').textContent = state.daily_count || 0;
+  document.getElementById('stat-last').textContent  = state.last_posted_at
+    ? new Date(state.last_posted_at).toLocaleTimeString('en-GB',
+        {timeZone:'UTC',hour:'2-digit',minute:'2-digit'}) + ' UTC' : '—';
+  document.getElementById('stat-next').textContent = nextSlot ? nextSlot+' UTC' : '—';
+  if (state.log && state.log.length) {
+    document.getElementById('log-box').innerHTML =
+      [...state.log].reverse().map(l=>`<div>${l}</div>`).join('');
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/status');
+    renderScheduleSlots(await r.json());
+  } catch(e) {}
+}
+
+refreshStatus();
+setInterval(refreshStatus, 15000);
+</script>
+</body>
+</html>
+"""
 
 /* HEADER */
 .header{background:linear-gradient(135deg,#0A0A0A 0%,#1a0000 60%,#0d0000 100%);
@@ -767,6 +1293,13 @@ def index():
     )
 
 
+@app.route("/squad/<int:team_id>")
+def squad(team_id):
+    """Returns full squad for a team — powers the rival player dropdown."""
+    players = agent.api_client.get_squad(team_id)
+    return jsonify({"players": players})
+
+
 @app.route("/generate", methods=["POST"])
 def generate():
     data        = request.get_json()
@@ -775,10 +1308,11 @@ def generate():
     custom_note = data.get("custom_note", "")
 
     if mode == "player":
+        rival_team_id = data.get("rival_team_id")
         result = agent.build_player_comparison(
             arsenal_key=data.get("arsenal_player", ""),
             rival_name=data.get("rival_player", ""),
-            rival_team_id=int(data["rival_team_id"]) if data.get("rival_team_id") else None,
+            rival_team_id=int(rival_team_id) if rival_team_id else None,
             tone=tone,
             custom_note=custom_note,
         )
