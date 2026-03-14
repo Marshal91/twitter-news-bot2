@@ -682,6 +682,21 @@ def debug_squad():
     return jsonify({"count": len(agent.arsenal_squad), "squad": agent.arsenal_squad})
 
 
+@app.route("/debug/team-stats/<int:team_id>")
+def debug_team_stats(team_id):
+    from arsenal_datamb_agent import STANDINGS_SEASON, PL_LEAGUE_ID
+    stats = agent.api_client.get_team_stats(team_id, PL_LEAGUE_ID, STANDINGS_SEASON)
+    extracted = agent.extractor.extract_team_radar_values(stats)
+    normalised = agent.extractor.percentile_normalise(extracted)
+    return jsonify({
+        "team_id": team_id,
+        "season": STANDINGS_SEASON,
+        "raw_keys": list(stats.keys()) if stats else None,
+        "extracted": extracted,
+        "normalised": normalised,
+    })
+
+
 @app.route("/squad/<int:team_id>")
 def squad(team_id):
     """Returns live squad for any team via cache."""
