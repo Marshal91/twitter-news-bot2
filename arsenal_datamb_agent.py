@@ -237,10 +237,15 @@ class APIFootballClient:
             )
             r.raise_for_status()
             data = r.json()
+            # Log API errors returned in the response body
+            if data.get("errors"):
+                logger.error(f"API-Football errors [{endpoint} {params}]: {data['errors']}")
+            remaining = r.headers.get("x-ratelimit-requests-remaining", "?")
+            logger.debug(f"API-Football [{endpoint}] status={r.status_code} remaining={remaining}")
             self._cache[cache_key] = data
             return data
         except Exception as e:
-            logger.error(f"API-Football error [{endpoint}]: {e}")
+            logger.error(f"API-Football request failed [{endpoint} {params}]: {e}")
             return None
 
     def get_player_stats(self, player_id: int, season: int = CURRENT_SEASON) -> Optional[Dict]:
@@ -266,12 +271,19 @@ class APIFootballClient:
         top_n=None → all teams. top_n=N → first N by rank.
         """
         data = self._get("standings", {"league": league_id, "season": season})
-        if not data or not data.get("response"):
+        if not data:
+            logger.error(f"get_league_teams: no data returned for league={league_id} season={season}")
+            return []
+        if not data.get("response"):
+            logger.error(f"get_league_teams: empty response for league={league_id} season={season} — errors={data.get('errors')}")
             return []
         try:
             standings_groups = data["response"][0]["league"]["standings"]
-        except (IndexError, KeyError):
+        except (IndexError, KeyError) as e:
+            logger.error(f"get_league_teams: unexpected structure — {e}")
             return []
+
+        logger.info(f"get_league_teams: league={league_id} season={season} groups={len(standings_groups)}")
 
         # Flatten all groups and deduplicate by team id
         seen_ids = set()
@@ -283,9 +295,9 @@ class APIFootballClient:
                     seen_ids.add(team_id)
                     all_rows.append(row)
 
-        # Sort by rank so top_n slicing is meaningful
-        all_rows.sort(key=lambda r: r.get("rank", 99))
+        logger.info(f"get_league_teams: {len(all_rows)} unique teams found")
 
+        all_rows.sort(key=lambda r: r.get("rank", 99))
         rows = all_rows[:top_n] if top_n else all_rows
         teams = []
         for row in rows:
@@ -395,23 +407,28 @@ LEAGUE_NAMES = {
     39: "Premier League",
 }
 
-# Fallback hardcoded rival teams (used if API fetch fails)
+# Fallback hardcoded EPL rival teams — used if API fetch fails
+# All 20 Premier League teams (excluding Arsenal)
 _FALLBACK_RIVAL_TEAMS = {
-    "Liverpool":           {"id": 40,  "league": 39,  "colour": "#C8102E"},
-    "Manchester City":     {"id": 50,  "league": 39,  "colour": "#6CABDD"},
-    "Chelsea":             {"id": 49,  "league": 39,  "colour": "#034694"},
-    "Tottenham":           {"id": 47,  "league": 39,  "colour": "#132257"},
-    "Manchester United":   {"id": 33,  "league": 39,  "colour": "#DA291C"},
-    "Newcastle":           {"id": 34,  "league": 39,  "colour": "#241F20"},
-    "Aston Villa":         {"id": 66,  "league": 39,  "colour": "#670E36"},
-    "Real Madrid":         {"id": 541, "league": 140, "colour": "#00529F"},
-    "Barcelona":           {"id": 529, "league": 140, "colour": "#A50044"},
-    "Bayern Munich":       {"id": 157, "league": 78,  "colour": "#DC052D"},
-    "Borussia Dortmund":   {"id": 165, "league": 78,  "colour": "#FDE100"},
-    "Inter Milan":         {"id": 505, "league": 135, "colour": "#010E80"},
-    "Juventus":            {"id": 496, "league": 135, "colour": "#000000"},
-    "PSG":                 {"id": 85,  "league": 61,  "colour": "#004170"},
-    "Monaco":              {"id": 91,  "league": 61,  "colour": "#CE1126"},
+    "Aston Villa":              {"id": 66,  "league": 39, "colour": "#670E36"},
+    "Bournemouth":              {"id": 35,  "league": 39, "colour": "#DA291C"},
+    "Brentford":                {"id": 55,  "league": 39, "colour": "#E30613"},
+    "Brighton & Hove Albion":   {"id": 51,  "league": 39, "colour": "#0057B8"},
+    "Burnley":                  {"id": 44,  "league": 39, "colour": "#6C1D45"},
+    "Chelsea":                  {"id": 49,  "league": 39, "colour": "#034694"},
+    "Crystal Palace":           {"id": 52,  "league": 39, "colour": "#1B458F"},
+    "Everton":                  {"id": 45,  "league": 39, "colour": "#003399"},
+    "Fulham":                   {"id": 36,  "league": 39, "colour": "#CC0000"},
+    "Leeds United":             {"id": 63,  "league": 39, "colour": "#FFCD00"},
+    "Liverpool":                {"id": 40,  "league": 39, "colour": "#C8102E"},
+    "Manchester City":          {"id": 50,  "league": 39, "colour": "#6CABDD"},
+    "Manchester United":        {"id": 33,  "league": 39, "colour": "#DA291C"},
+    "Newcastle United":         {"id": 34,  "league": 39, "colour": "#241F20"},
+    "Nottingham Forest":        {"id": 65,  "league": 39, "colour": "#DD0000"},
+    "Sunderland":               {"id": 71,  "league": 39, "colour": "#EB172B"},
+    "Tottenham Hotspur":        {"id": 47,  "league": 39, "colour": "#132257"},
+    "West Ham United":          {"id": 48,  "league": 39, "colour": "#7A263A"},
+    "Wolverhampton Wanderers":  {"id": 39,  "league": 39, "colour": "#FDB913"},
 }
 
 # Fallback Arsenal squad (used if API fetch fails)
@@ -450,7 +467,16 @@ class LiveDataCache:
         """Fetches all EPL teams from standings + Arsenal squad at startup."""
         logger.info("🔄 Fetching live EPL team data from API-Football...")
 
-        epl_teams = self.api.get_league_teams(39, top_n=None)
+        # Try current season first, fall back to previous if empty
+        epl_teams = []
+        for season in [2025, 2024]:
+            epl_teams = self.api.get_league_teams(39, top_n=None, season=season)
+            if epl_teams:
+                logger.info(f"✅ Premier League ({season}/{str(season+1)[-2:]}): {len(epl_teams)} teams loaded")
+                break
+            else:
+                logger.warning(f"⚠️ EPL standings empty for season {season}, trying previous...")
+
         if epl_teams:
             for t in epl_teams:
                 self.rival_teams[t["name"]] = {
@@ -458,16 +484,20 @@ class LiveDataCache:
                     "league": 39,
                     "colour": "#888888",
                 }
-            logger.info(f"✅ Premier League: {len(epl_teams)} teams loaded")
         else:
-            logger.warning("⚠️ EPL fetch failed — using fallback team list")
+            logger.warning("⚠️ EPL fetch failed for all seasons — using fallback team list")
             self.rival_teams = _FALLBACK_RIVAL_TEAMS.copy()
 
-        # Arsenal squad
-        squad = self.api.get_arsenal_squad()
+        # Arsenal squad — also try both seasons
+        squad = []
+        for season in [2025, 2024]:
+            squad = self.api.get_arsenal_squad(season=season)
+            if squad:
+                logger.info(f"✅ Arsenal squad ({season}): {len(squad)} players loaded")
+                break
+
         if squad:
             self.arsenal_squad = squad
-            logger.info(f"✅ Arsenal squad: {len(squad)} players loaded")
         else:
             logger.warning("⚠️ Arsenal squad fetch failed — using fallback")
             self.arsenal_squad = _FALLBACK_ARSENAL_SQUAD.copy()
