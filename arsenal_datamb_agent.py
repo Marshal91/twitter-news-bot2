@@ -657,168 +657,172 @@ class StatsExtractor:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RADAR CHART RENDERER  (DataMB aesthetic — clean light theme)
+# RADAR CHART RENDERER  (DataMB style — stat table + radar)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class RadarRenderer:
     """
-    Generates a clean, legible DataMB-style radar chart as PNG bytes.
-    Light background, red Arsenal polygon, dashed rival polygon.
-    Labels sit outside the chart area with clip_on=False — nothing is cut off.
+    Generates a DataMB-style image: percentile table on top, radar below.
+    White background, Arsenal red polygon, rival purple/blue polygon.
     """
 
-    # Palette
-    BG      = "#F6F6F4"
-    CARD    = "#FFFFFF"
-    GRID    = "#E2E2E2"
-    SPOKE   = "#CECECE"
-    TEXT    = "#1A1A1A"
-    SUB     = "#666666"
-    DIM     = "#BBBBBB"
+    BG          = "#FFFFFF"
+    ARSENAL_COL = "#EF0107"
+    RIVAL_COL   = "#7B6BDE"
+    GRID        = "#E8EAF0"
+    SPOKE       = "#DDE0EA"
+    TEXT_MED    = "#666680"
+    TEXT_LIGHT  = "#AAAABC"
+    AFC_LABEL   = "#3D5AF1"
+    RIVAL_LABEL = "#E8356D"
+    WATERMARK   = "#CCCCDD"
 
     def render(
         self,
         labels:       List[str],
-        values_a:     List[float],   # Arsenal (0-100 percentiles)
+        values_a:     List[float],
         label_a:      str,
         values_b:     List[float] = None,
         label_b:      str = None,
         title:        str = "",
         subtitle:     str = "",
         season:       str = "2025/26",
-        rival_colour: str = RIVAL_COLOUR,
+        rival_colour: str = None,
     ) -> bytes:
 
+        rival_col = rival_colour or self.RIVAL_COL
         n      = len(labels)
-        angles = np.linspace(0, 2 * np.pi, n, endpoint=False) - np.pi / 2
+        # Start at top, go clockwise
+        angles = np.linspace(0, 2*np.pi, n, endpoint=False) + np.pi/2
         ac     = np.append(angles, angles[0])
         va_c   = np.append(np.array(values_a), values_a[0]) / 100.0
         vb_c   = (np.append(np.array(values_b), values_b[0]) / 100.0
                   if values_b is not None else None)
 
-        fig = plt.figure(figsize=(7.8, 9.6), facecolor=self.BG)
+        fig = plt.figure(figsize=(8.5, 10.5), facecolor=self.BG)
 
-        # Polar axes — inset with generous margins so labels never clip
-        ax = fig.add_axes([0.20, 0.17, 0.60, 0.62], polar=True,
-                          facecolor=self.CARD)
+        # ── STAT TABLE (top 26% of figure) ───────────────────────────────────
+        ax_t = fig.add_axes([0.03, 0.74, 0.94, 0.24], facecolor=self.BG)
+        ax_t.set_xlim(0, 1)
+        ax_t.set_ylim(0, 1)
+        ax_t.axis("off")
 
-        ring_th = np.linspace(0, 2 * np.pi, 360)
+        # Column x positions — label col + one per metric
+        cx = [0.0] + [0.175 + i * 0.115 for i in range(len(labels))]
 
-        # Alternating background bands
-        for i, (lo, hi) in enumerate([(0, 0.25), (0.25, 0.5),
-                                       (0.5, 0.75), (0.75, 1.0)]):
-            c = "#FBF0F0" if i % 2 == 0 else "#FFFFFF"
-            ax.fill_between(ring_th, lo, hi, color=c, zorder=0)
+        # Header background
+        ax_t.add_patch(plt.Rectangle((0, 0.78), 1, 0.22,
+            facecolor="#F7F8FC", edgecolor="none", zorder=0))
+        ax_t.axhline(0.78, color="#E0E2EE", linewidth=0.8)
+
+        # Header labels
+        ax_t.text(cx[0], 0.89, "Percentiles",
+            ha="left", va="center", fontsize=8, color=self.TEXT_LIGHT,
+            style="italic")
+        for i, lbl in enumerate(labels):
+            if i + 1 < len(cx):
+                ax_t.text(cx[i+1], 0.89, lbl,
+                    ha="center", va="center", fontsize=8, color=self.TEXT_LIGHT)
+
+        # Arsenal row
+        ax_t.text(cx[0], 0.60, label_a,
+            ha="left", va="center", fontsize=10, color=self.AFC_LABEL,
+            fontweight="bold")
+        ax_t.text(cx[0], 0.46, f"Premier League, {season}",
+            ha="left", va="center", fontsize=7, color=self.TEXT_LIGHT)
+        for i, v in enumerate(values_a):
+            if i + 1 < len(cx):
+                ax_t.text(cx[i+1], 0.53, f"{round(v, 1)}",
+                    ha="center", va="center", fontsize=9.5,
+                    color=self.AFC_LABEL, fontweight="bold")
+
+        # Row divider
+        ax_t.axhline(0.34, color="#E8EAF0", linewidth=0.6)
+
+        # Rival row (if comparison)
+        if values_b is not None and label_b:
+            ax_t.text(cx[0], 0.24, label_b,
+                ha="left", va="center", fontsize=10, color=self.RIVAL_LABEL,
+                fontweight="bold")
+            ax_t.text(cx[0], 0.10, f"Premier League, {season}",
+                ha="left", va="center", fontsize=7, color=self.TEXT_LIGHT)
+            for i, v in enumerate(values_b):
+                if i + 1 < len(cx):
+                    ax_t.text(cx[i+1], 0.17, f"{round(v, 1)}",
+                        ha="center", va="center", fontsize=9.5,
+                        color=self.RIVAL_LABEL, fontweight="bold")
+
+        # Table border
+        for spine in ["top", "bottom", "left", "right"]:
+            ax_t.spines[spine].set_visible(True)
+            ax_t.spines[spine].set_color("#E0E2EE")
+            ax_t.spines[spine].set_linewidth(0.8)
+
+        # ── RADAR (bottom 70% of figure) ─────────────────────────────────────
+        ax = fig.add_axes([0.08, 0.03, 0.84, 0.70], polar=True,
+                          facecolor=self.BG)
+        ring_th = np.linspace(0, 2*np.pi, 360)
+
+        # Subtle ring fills
+        for rv, alpha in [(0.2,0.07),(0.4,0.05),(0.6,0.04),(0.8,0.03)]:
+            ax.fill_between(ring_th, max(rv-0.2, 0), rv,
+                color="#EEEEFF", alpha=alpha, zorder=0)
 
         # Ring outlines
-        for rv in [0.25, 0.5, 0.75, 1.0]:
-            ax.plot(ring_th, [rv] * 360, color=self.GRID,
-                    linewidth=0.8, zorder=1)
+        for rv in [0.2, 0.4, 0.6, 0.8, 1.0]:
+            ax.plot(ring_th, [rv]*360, color=self.GRID, linewidth=0.7, zorder=1)
 
         # Spokes
         for angle in angles:
             ax.plot([angle, angle], [0, 1.0], color=self.SPOKE,
-                    linewidth=0.8, zorder=1)
+                    linewidth=0.7, zorder=1)
 
-        # Rival polygon (drawn first — sits behind Arsenal)
+        # Rival behind Arsenal
         if vb_c is not None:
-            ax.fill(ac, vb_c, color=rival_colour, alpha=0.13, zorder=2)
-            ax.plot(ac, vb_c, color=rival_colour, linewidth=1.9,
-                    linestyle="--", alpha=0.88, zorder=3)
-            ax.scatter(angles, np.array(values_b) / 100.0,
-                       color=rival_colour, s=28, zorder=4, marker="D",
-                       edgecolors="white", linewidths=0.5)
+            ax.fill(ac, vb_c, color=rival_col, alpha=0.14, zorder=2)
+            ax.plot(ac, vb_c, color=rival_col, linewidth=2.2, zorder=3)
+            ax.scatter(angles, np.array(values_b)/100.0,
+                color=rival_col, s=45, zorder=4,
+                edgecolors="white", linewidths=1.2)
 
-        # Arsenal polygon
-        ax.fill(ac, va_c, color=ARSENAL_RED, alpha=0.20, zorder=2)
-        ax.plot(ac, va_c, color=ARSENAL_RED, linewidth=2.3, zorder=3)
-        ax.scatter(angles, np.array(values_a) / 100.0,
-                   color=ARSENAL_RED, s=38, zorder=5,
-                   edgecolors="white", linewidths=0.6)
+        # Arsenal on top
+        ax.fill(ac, va_c, color=self.ARSENAL_COL, alpha=0.16, zorder=2)
+        ax.plot(ac, va_c, color=self.ARSENAL_COL, linewidth=2.2, zorder=3)
+        ax.scatter(angles, np.array(values_a)/100.0,
+            color=self.ARSENAL_COL, s=45, zorder=5,
+            edgecolors="white", linewidths=1.2)
 
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_ylim(0, 1.0)
-        ax.spines["polar"].set_color(self.GRID)
-        ax.spines["polar"].set_linewidth(0.8)
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_ylim(0, 1.18)
+        ax.spines["polar"].set_visible(False)
 
-        # Ring percentage markers
-        for rv, lbl in [(0.25, "25"), (0.5, "50"), (0.75, "75"), (1.0, "99")]:
-            ax.text(np.radians(248), rv + 0.02, lbl,
-                    ha="center", va="bottom",
-                    fontsize=6.5, color=self.DIM)
+        # Outer border ring
+        ax.plot(ring_th, [1.0]*360, color="#C8CCDE", linewidth=1.4, zorder=5)
 
-        # Axis labels + percentile values (clip_on=False — never hidden)
-        LABEL_R = 1.18
-        VAL_A_R = 1.30
-        VAL_B_R = 1.40
-
-        for i, (angle, label) in enumerate(zip(angles, labels)):
+        # Axis labels
+        LABEL_R = 1.10
+        for angle, label in zip(angles, labels):
             deg = np.degrees(angle) % 360
-
-            if   deg < 12 or deg > 348: ha, va_a = "center", "bottom"
-            elif 12  <= deg < 80:        ha, va_a = "left",   "center"
+            if   deg < 10 or deg > 350: ha, va_a = "center", "bottom"
+            elif 10  <= deg < 80:        ha, va_a = "left",   "center"
             elif 80  <= deg < 100:       ha, va_a = "center", "bottom"
             elif 100 <= deg < 170:       ha, va_a = "left",   "center"
             elif 170 <= deg < 190:       ha, va_a = "center", "top"
             elif 190 <= deg < 260:       ha, va_a = "right",  "center"
             elif 260 <= deg < 280:       ha, va_a = "center", "top"
             else:                         ha, va_a = "right",  "center"
-
             ax.text(angle, LABEL_R, label,
-                    ha=ha, va=va_a,
-                    fontsize=8.0, color=self.SUB, fontweight="semibold",
-                    linespacing=1.25, clip_on=False)
-
-            ax.text(angle, VAL_A_R, str(int(values_a[i])),
-                    ha=ha, va=va_a,
-                    fontsize=8.5, color=ARSENAL_RED, fontweight="bold",
-                    clip_on=False)
-
-            if values_b is not None:
-                ax.text(angle, VAL_B_R, str(int(values_b[i])),
-                        ha=ha, va=va_a,
-                        fontsize=8.0, color=rival_colour,
-                        clip_on=False)
-
-        # Title
-        fig.text(0.5, 0.955, title,
-                 ha="center", va="top",
-                 fontsize=14.5, fontweight="bold", color=self.TEXT)
-        fig.text(0.5, 0.924, subtitle,
-                 ha="center", va="top",
-                 fontsize=9.0, color=self.SUB)
-
-        # Legend
-        from matplotlib.lines import Line2D
-        legend_elements = [
-            Line2D([0], [0], color=ARSENAL_RED, linewidth=2.5, label=label_a),
-        ]
-        if values_b is not None and label_b:
-            legend_elements.append(
-                Line2D([0], [0], color=rival_colour, linewidth=2.0,
-                       linestyle="--", label=label_b)
-            )
-        fig.legend(
-            handles=legend_elements,
-            loc="lower center",
-            bbox_to_anchor=(0.5, 0.038),
-            ncol=2 if values_b else 1,
-            frameon=False,
-            fontsize=9.5,
-            labelcolor=self.TEXT,
-        )
+                ha=ha, va=va_a, fontsize=9.5, color=self.TEXT_MED,
+                fontweight="500", clip_on=False)
 
         # Watermark
-        fig.text(0.5, 0.014,
-                 f"DataMB  ·  Premier League {season}  ·  Arsenal FC Agent",
-                 ha="center", va="bottom",
-                 fontsize=7.5, color=self.DIM)
+        fig.text(0.5, 0.005,
+            f"DataMB  ·  Premier League {season}  ·  Arsenal FC Agent",
+            ha="center", va="bottom", fontsize=7.5, color=self.WATERMARK)
 
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=160,
-                    facecolor=self.BG,
-                    bbox_inches="tight", pad_inches=0.3)
+                    facecolor=self.BG, bbox_inches="tight", pad_inches=0.15)
         plt.close(fig)
         buf.seek(0)
         return buf.read()
