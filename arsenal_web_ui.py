@@ -488,13 +488,17 @@ async function generate() {
   var payload = { tone: currentTone, custom_note: document.getElementById('custom-note').value };
 
   if (currentMode === 'player') {
-    payload.mode          = 'player';
-    payload.arsenal_player = document.getElementById('arsenal-player').value;
+    payload.mode = 'player';
+    var sel = document.getElementById('arsenal-player');
+    var opt = sel.options[sel.selectedIndex];
+    payload.arsenal_player_id   = opt ? parseInt(opt.value) : 0;
+    payload.arsenal_player_name = opt ? opt.dataset.name : '';
+    payload.arsenal_pos         = opt ? opt.dataset.pos  : 'MF';
     var selVal    = document.getElementById('rival-player-select').value;
     var manualVal = document.getElementById('rival-player-manual').value.trim();
     payload.rival_player  = selVal || manualVal;
     payload.rival_team_id = document.getElementById('rival-team-for-player').value || null;
-    if (!payload.arsenal_player) { showStatus('error','Select an Arsenal player'); resetBtn(); return; }
+    if (!payload.arsenal_player_id) { showStatus('error','Select an Arsenal player'); resetBtn(); return; }
   } else {
     payload.mode       = 'team';
     payload.rival_team = document.getElementById('rival-team-team').value;
@@ -615,55 +619,60 @@ setInterval(refreshStatus,15000);
 """
 
 
-# ── Build option HTML strings (avoids Jinja2 conflicts with %%) ───────────────
-def _player_options(positions):
-    return "\n".join(
-        f'<option value="{k}">{v["name"]}</option>'
-        for k, v in ARSENAL_SQUAD.items() if v["pos"] in positions
-    )
-
-def _team_player_options(league_id):
-    return "\n".join(
-        f'<option value="{info["id"]}">{name}</option>'
-        for name, info in RIVAL_TEAMS.items() if info["league"] == league_id
-    )
-
-def _team_options(league_id):
-    return "\n".join(
-        f'<option value="{name}">{name}</option>'
-        for name, info in RIVAL_TEAMS.items() if info["league"] == league_id
-    )
-
-
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
 
 @app.route("/")
 def index():
+    # Build Arsenal player options from live squad cache
+    def afc_opts(api_positions):
+        return "\n".join(
+            f'<option value="{p["id"]}" data-pos="{p["pos"]}" data-name="{p["name"]}">'
+            f'{p["name"]} ({p["pos"]})</option>'
+            for p in agent.arsenal_squad
+            if p.get("api_pos", p["pos"]) in api_positions
+        )
+
+    # Build rival team options from live cache
+    def team_player_opts(league_id):
+        return "\n".join(
+            f'<option value="{info["id"]}">{name}</option>'
+            for name, info in sorted(agent.rival_teams.items())
+            if info.get("league") == league_id
+        )
+
+    def team_opts(league_id):
+        return "\n".join(
+            f'<option value="{name}">{name}</option>'
+            for name, info in sorted(agent.rival_teams.items())
+            if info.get("league") == league_id
+        )
+
     html = HTML % {
-        "gk_options":           _player_options(["GK"]),
-        "def_options":          _player_options(["CB", "FB"]),
-        "mid_options":          _player_options(["MF"]),
-        "fwd_options":          _player_options(["WG", "ST"]),
-        "pl_options":           _team_player_options(39),
-        "laliga_options":       _team_player_options(140),
-        "bundesliga_options":   _team_player_options(78),
-        "seriea_options":       _team_player_options(135),
-        "ligue1_options":       _team_player_options(61),
-        "pl_team_options":      _team_options(39),
-        "laliga_team_options":  _team_options(140),
-        "bundesliga_team_options": _team_options(78),
-        "seriea_team_options":  _team_options(135),
-        "ligue1_team_options":  _team_options(61),
-        "schedule_json":        json.dumps(SCHEDULE),
+        "gk_options":              afc_opts(["Goalkeeper"]),
+        "def_options":             afc_opts(["Defender"]),
+        "mid_options":             afc_opts(["Midfielder"]),
+        "fwd_options":             afc_opts(["Attacker"]),
+        "pl_options":              team_player_opts(39),
+        "laliga_options":          team_player_opts(140),
+        "bundesliga_options":      team_player_opts(78),
+        "seriea_options":          team_player_opts(135),
+        "ligue1_options":          team_player_opts(61),
+        "pl_team_options":         team_opts(39),
+        "laliga_team_options":     team_opts(140),
+        "bundesliga_team_options": team_opts(78),
+        "seriea_team_options":     team_opts(135),
+        "ligue1_team_options":     team_opts(61),
+        "schedule_json":           json.dumps(SCHEDULE),
     }
     return html
 
 
 @app.route("/squad/<int:team_id>")
 def squad(team_id):
-    players = agent.api_client.get_squad(team_id)
+    """Returns live squad for any team via cache."""
+    players = agent.cache.get_squad(team_id)
     return jsonify({"players": players})
 
 
@@ -677,7 +686,9 @@ def generate():
     if mode == "player":
         rival_team_id = data.get("rival_team_id")
         result = agent.build_player_comparison(
-            arsenal_key=data.get("arsenal_player", ""),
+            arsenal_player_id=int(data.get("arsenal_player_id", 0)),
+            arsenal_player_name=data.get("arsenal_player_name", ""),
+            arsenal_pos=data.get("arsenal_pos", "MF"),
             rival_name=data.get("rival_player", ""),
             rival_team_id=int(rival_team_id) if rival_team_id else None,
             tone=tone,
