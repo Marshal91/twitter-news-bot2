@@ -44,7 +44,8 @@ OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "")
 
 # Premier League IDs (API-Football)
 PL_LEAGUE_ID   = 39
-CURRENT_SEASON = 2025   # 2025/26 season
+CURRENT_SEASON       = 2025   # 2025/26 — for squad/player stats endpoints
+STANDINGS_SEASON     = 2024   # 2024/25 — free tier caps at 2024 for standings
 
 # Arsenal team ID in API-Football
 ARSENAL_TEAM_ID = 42
@@ -264,7 +265,7 @@ class APIFootballClient:
         return data.get("response")
 
     def get_league_teams(self, league_id: int, top_n: int = None,
-                         season: int = CURRENT_SEASON) -> List[Dict]:
+                         season: int = STANDINGS_SEASON) -> List[Dict]:
         """
         Fetches teams via standings (free-tier compatible).
         Flattens ALL standings groups so every team is captured.
@@ -467,16 +468,8 @@ class LiveDataCache:
         """Fetches all EPL teams from standings + Arsenal squad at startup."""
         logger.info("🔄 Fetching live EPL team data from API-Football...")
 
-        # Try current season first, fall back to previous if empty
-        epl_teams = []
-        for season in [2025, 2024]:
-            epl_teams = self.api.get_league_teams(39, top_n=None, season=season)
-            if epl_teams:
-                logger.info(f"✅ Premier League ({season}/{str(season+1)[-2:]}): {len(epl_teams)} teams loaded")
-                break
-            else:
-                logger.warning(f"⚠️ EPL standings empty for season {season}, trying previous...")
-
+        # Standings locked to 2024 — free tier does not allow 2025
+        epl_teams = self.api.get_league_teams(39, top_n=None, season=STANDINGS_SEASON)
         if epl_teams:
             for t in epl_teams:
                 self.rival_teams[t["name"]] = {
@@ -484,20 +477,18 @@ class LiveDataCache:
                     "league": 39,
                     "colour": "#888888",
                 }
+            logger.info(f"✅ Premier League: {len(epl_teams)} teams loaded")
         else:
-            logger.warning("⚠️ EPL fetch failed for all seasons — using fallback team list")
+            logger.warning("⚠️ EPL fetch failed — using fallback team list")
             self.rival_teams = _FALLBACK_RIVAL_TEAMS.copy()
 
-        # Arsenal squad — also try both seasons
-        squad = []
-        for season in [2025, 2024]:
-            squad = self.api.get_arsenal_squad(season=season)
-            if squad:
-                logger.info(f"✅ Arsenal squad ({season}): {len(squad)} players loaded")
-                break
-
+        # Arsenal squad — use current season (squads endpoint allows 2025)
+        squad = self.api.get_arsenal_squad(season=CURRENT_SEASON)
+        if not squad:
+            squad = self.api.get_arsenal_squad(season=STANDINGS_SEASON)
         if squad:
             self.arsenal_squad = squad
+            logger.info(f"✅ Arsenal squad: {len(squad)} players loaded")
         else:
             logger.warning("⚠️ Arsenal squad fetch failed — using fallback")
             self.arsenal_squad = _FALLBACK_ARSENAL_SQUAD.copy()
