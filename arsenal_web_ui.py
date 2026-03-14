@@ -653,6 +653,12 @@ def index():
     return html
 
 
+@app.route("/debug/teams")
+def debug_teams():
+    teams = sorted(agent.rival_teams.keys())
+    return jsonify({"count": len(teams), "teams": teams})
+
+
 @app.route("/squad/<int:team_id>")
 def squad(team_id):
     """Returns live squad for any team via cache."""
