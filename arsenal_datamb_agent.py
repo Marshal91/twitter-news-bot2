@@ -262,25 +262,39 @@ class APIFootballClient:
                          season: int = CURRENT_SEASON) -> List[Dict]:
         """
         Fetches teams via standings (free-tier compatible).
-        top_n=None → all teams (EPL).
-        top_n=5    → top 5 by current table position (other leagues).
+        Flattens ALL standings groups so every team is captured.
+        top_n=None → all teams. top_n=N → first N by rank.
         """
         data = self._get("standings", {"league": league_id, "season": season})
         if not data or not data.get("response"):
             return []
         try:
-            standings = data["response"][0]["league"]["standings"][0]
+            standings_groups = data["response"][0]["league"]["standings"]
         except (IndexError, KeyError):
             return []
 
+        # Flatten all groups and deduplicate by team id
+        seen_ids = set()
+        all_rows = []
+        for group in standings_groups:
+            for row in group:
+                team_id = row.get("team", {}).get("id")
+                if team_id and team_id not in seen_ids:
+                    seen_ids.add(team_id)
+                    all_rows.append(row)
+
+        # Sort by rank so top_n slicing is meaningful
+        all_rows.sort(key=lambda r: r.get("rank", 99))
+
+        rows = all_rows[:top_n] if top_n else all_rows
         teams = []
-        rows = standings[:top_n] if top_n else standings
         for row in rows:
             t = row.get("team", {})
-            if t.get("id") == ARSENAL_TEAM_ID:
+            tid = t.get("id")
+            if not tid or tid == ARSENAL_TEAM_ID:
                 continue
             teams.append({
-                "id":     t.get("id"),
+                "id":     tid,
                 "name":   t.get("name", ""),
                 "colour": "#888888",
             })
