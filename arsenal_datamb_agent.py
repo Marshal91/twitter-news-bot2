@@ -3,32 +3,29 @@
     ARSENAL DATAMB X AGENT
     Real football stats → DataMB-style radar image → Arsenal-biased X post
 
-    Features:
-    ✅ API-Football integration (real PL player & team stats)
-    ✅ DataMB-style radar card generated as PNG (via matplotlib)
-    ✅ Player vs Player OR Team vs Team comparison
-    ✅ Arsenal-biased GPT narrative
-    ✅ Image attached to tweet via v1.1 media upload
-    ✅ Web UI for select → edit → confirm → post
-    ✅ Plugs into existing bot's tweepy setup
+    Data sources:
+    ✅ FBref (team stats) — xG, xGA, PPDA, possession, progressive passes/carries
+    ✅ API-Football (player stats + squad lists)
+    ✅ DataMB-style radar card (stat table + radar polygon)
+    ✅ Arsenal-biased GPT narrative → auto-post to X with image
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
 import os
 import io
+import re
 import json
-import math
 import logging
 import requests
 import tempfile
 import numpy as np
+import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.patches import FancyArrowPatch
-import matplotlib.patheffects as pe
 from datetime import datetime, timedelta
+from io import StringIO
 from typing import Dict, List, Optional, Tuple
 from openai import OpenAI
 
@@ -60,6 +57,205 @@ GRID_COLOUR   = "#2A2A2A"
 TEXT_MUTED    = "#888888"
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FBREF TEAM STATS SCRAPER
+# Scrapes FBref (StatsBomb data) for accurate PL team stats matching DataMB
+# Metrics: xG, xGA, PPDA, Possession, Progressive Passes/Carries
+# ─────────────────────────────────────────────────────────────────────────────
+
+FBREF_SQUAD_URL = "https://fbref.com/en/comps/9/Premier-League-Stats"
+FBREF_POSS_URL  = "https://fbref.com/en/comps/9/possession/Premier-League-Stats"
+FBREF_MISC_URL  = "https://fbref.com/en/comps/9/misc/Premier-League-Stats"
+
+# FBref uses slightly different team name spellings — map to our API names
+FBREF_NAME_MAP = {
+    "Manchester City":   "Manchester City",
+    "Manchester Utd":    "Manchester United",
+    "Newcastle Utd":     "Newcastle",
+    "Nott'ham Forest":   "Nottingham Forest",
+    "Brighton":          "Brighton",
+    "Tottenham":         "Tottenham",
+    "West Ham":          "West Ham",
+    "Wolves":            "Wolves",
+    "Leicester City":    "Leicester",
+    "Ipswich Town":      "Ipswich",
+}
+
+
+class FBrefScraper:
+    """
+    Scrapes FBref for Premier League team stats.
+    Returns percentile rankings (0-99) for all 20 teams,
+    computed against each other — exactly how DataMB works.
+    """
+
+    HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    CACHE_TTL_HOURS = 6   # re-scrape every 6 hours
+
+    def __init__(self):
+        self._cache: Optional[pd.DataFrame] = None
+        self._cache_time: Optional[datetime] = None
+
+    def _fetch_table(self, url: str, table_id: str) -> Optional[pd.DataFrame]:
+        """Fetch a specific table from FBref by its HTML id."""
+        try:
+            r = requests.get(url, headers=self.HEADERS, timeout=20)
+            r.raise_for_status()
+            # FBref tables have multi-level headers — find by id in raw HTML
+            tables = pd.read_html(StringIO(r.text), attrs={"id": table_id})
+            if not tables:
+                return None
+            df = tables[0]
+            # Flatten multi-level columns
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [
+                    " ".join(c).strip() if c[0] != c[1] else c[1]
+                    for c in df.columns
+                ]
+            return df
+        except Exception as e:
+            logger.error(f"FBref fetch failed [{url}]: {e}")
+            return None
+
+    def _normalise_name(self, name: str) -> str:
+        return FBREF_NAME_MAP.get(name, name)
+
+    def _pct_rank(self, series: pd.Series, higher_is_better: bool = True) -> pd.Series:
+        """Rank values as percentiles 0-99 within the series."""
+        if higher_is_better:
+            ranked = series.rank(pct=True, method="average") * 99
+        else:
+            ranked = (1 - series.rank(pct=True, method="average")) * 99
+        return ranked.round(1)
+
+    def fetch_all_team_stats(self) -> Optional[pd.DataFrame]:
+        """
+        Returns a DataFrame indexed by team name with columns:
+        goals, attacking, defending, possession, pressing, physicality, counters
+        All values are percentile ranks (0-99) vs the rest of the PL.
+        """
+        # Cache check
+        if (self._cache is not None and self._cache_time is not None and
+                datetime.now() - self._cache_time < timedelta(hours=self.CACHE_TTL_HOURS)):
+            logger.info("FBref: using cached stats")
+            return self._cache
+
+        logger.info("FBref: fetching live team stats...")
+
+        # ── Table 1: Squad Standard Stats (goals, xG, xGA, MP) ──────────────
+        std = self._fetch_table(FBREF_SQUAD_URL, "stats_squads_standard_for")
+        if std is None:
+            logger.error("FBref: could not fetch standard stats")
+            return None
+
+        # Clean squad column — drop header repeat rows
+        squad_col = [c for c in std.columns if "Squad" in c][0]
+        std = std[std[squad_col].notna() & (std[squad_col] != "Squad")].copy()
+        std["team"] = std[squad_col].apply(self._normalise_name)
+
+        # Find xG columns
+        xg_col  = next((c for c in std.columns if "xG"  in c and "xGA" not in c and "xGD" not in c), None)
+        xga_col = next((c for c in std.columns if "xGA" in c), None)
+        gls_col = next((c for c in std.columns if c in ["Gls", "Performance Gls", "Gls Gls"]), None)
+
+        logger.info(f"FBref std cols: {list(std.columns)}")
+        logger.info(f"xG={xg_col}, xGA={xga_col}, Gls={gls_col}")
+
+        # ── Table 2: Possession stats (Poss%, PrgP, PrgC) ───────────────────
+        poss = self._fetch_table(FBREF_POSS_URL, "stats_squads_possession_for")
+        poss_col, prgp_col, prgc_col = None, None, None
+        if poss is not None:
+            sq2 = [c for c in poss.columns if "Squad" in c][0]
+            poss = poss[poss[sq2].notna() & (poss[sq2] != "Squad")].copy()
+            poss["team"] = poss[sq2].apply(self._normalise_name)
+            poss_col = next((c for c in poss.columns if "Poss" in c), None)
+            prgp_col = next((c for c in poss.columns if "PrgP" in c), None)
+            prgc_col = next((c for c in poss.columns if "PrgC" in c), None)
+
+        # ── Table 3: Misc stats (PPDA proxy via pressing actions) ────────────
+        misc = self._fetch_table(FBREF_MISC_URL, "stats_squads_misc_for")
+        ppda_col = None
+        if misc is not None:
+            sq3 = [c for c in misc.columns if "Squad" in c][0]
+            misc = misc[misc[sq3].notna() & (misc[sq3] != "Squad")].copy()
+            misc["team"] = misc[sq3].apply(self._normalise_name)
+            # Press% or Att 3rd recoveries as pressing proxy
+            ppda_col = next((c for c in misc.columns
+                             if "Press" in c or "Tkl" in c), None)
+
+        # ── Merge all tables ─────────────────────────────────────────────────
+        merged = std[["team"]].copy()
+
+        def safe_float(df, col):
+            if col and col in df.columns:
+                return pd.to_numeric(df[col], errors="coerce")
+            return None
+
+        merged["xG"]   = safe_float(std, xg_col)
+        merged["xGA"]  = safe_float(std, xga_col)
+        merged["Gls"]  = safe_float(std, gls_col)
+
+        if poss is not None:
+            poss_merge = poss[["team"] + [c for c in [poss_col, prgp_col, prgc_col] if c]].copy()
+            merged = merged.merge(poss_merge, on="team", how="left")
+            if poss_col: merged.rename(columns={poss_col: "Poss"}, inplace=True)
+            if prgp_col: merged.rename(columns={prgp_col: "PrgP"}, inplace=True)
+            if prgc_col: merged.rename(columns={prgc_col: "PrgC"}, inplace=True)
+
+        if misc is not None and ppda_col:
+            misc_merge = misc[["team", ppda_col]].copy()
+            merged = merged.merge(misc_merge, on="team", how="left")
+            merged.rename(columns={ppda_col: "Press"}, inplace=True)
+
+        merged = merged.dropna(subset=["xG", "xGA"]).copy()
+        merged = merged.set_index("team")
+
+        logger.info(f"FBref merged: {len(merged)} teams, cols={list(merged.columns)}")
+
+        # ── Compute percentile ranks ─────────────────────────────────────────
+        result = pd.DataFrame(index=merged.index)
+
+        result["goals"]       = self._pct_rank(merged["Gls"],  True)  if "Gls"   in merged else self._pct_rank(merged["xG"], True)
+        result["attacking"]   = self._pct_rank(merged["xG"],   True)
+        result["defending"]   = self._pct_rank(merged["xGA"],  False) # lower xGA = better
+        result["possession"]  = self._pct_rank(merged["Poss"], True)  if "Poss"  in merged else pd.Series(50.0, index=merged.index)
+        result["counters"]    = self._pct_rank(merged["PrgP"], True)  if "PrgP"  in merged else pd.Series(50.0, index=merged.index)
+        result["physicality"] = self._pct_rank(merged["PrgC"], True)  if "PrgC"  in merged else pd.Series(50.0, index=merged.index)
+        result["pressing"]    = self._pct_rank(merged["Press"],False)  if "Press" in merged else pd.Series(50.0, index=merged.index)
+
+        self._cache      = result
+        self._cache_time = datetime.now()
+        logger.info(f"FBref: stats cached for {len(result)} teams")
+
+        if "Arsenal" in result.index:
+            logger.info(f"Arsenal FBref: {result.loc['Arsenal'].to_dict()}")
+
+        return result
+
+    def get_team_percentiles(self, team_name: str) -> Optional[Dict[str, float]]:
+        """Returns {metric: percentile} for a given team, or None if not found."""
+        df = self.fetch_all_team_stats()
+        if df is None:
+            return None
+        # Try exact match first, then partial
+        if team_name in df.index:
+            return df.loc[team_name].to_dict()
+        # Fuzzy match
+        matches = [t for t in df.index if team_name.lower() in t.lower()
+                   or t.lower() in team_name.lower()]
+        if matches:
+            logger.info(f"FBref fuzzy match: '{team_name}' → '{matches[0]}'")
+            return df.loc[matches[0]].to_dict()
+        logger.warning(f"FBref: team '{team_name}' not found. Available: {list(df.index)}")
+        return None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RADAR METRIC DEFINITIONS  (mirrors DataMB's per-position templates)
@@ -986,6 +1182,7 @@ class ArsenalDataMBAgent:
         self.extractor      = StatsExtractor()
         self.renderer       = RadarRenderer()
         self.narrative      = ArsenalNarrativeGenerator()
+        self.fbref          = FBrefScraper()          # ← FBref team stats
         self.twitter_api    = twitter_api
         self.twitter_client = twitter_client
 
@@ -1092,35 +1289,30 @@ class ArsenalDataMBAgent:
         if not rival_info:
             return {"error": f"Unknown rival team: {rival_team_key}"}
 
-        rival_league_id = rival_info.get("league", PL_LEAGUE_ID)
+        # ── Fetch percentiles from FBref ──────────────────────────────────
+        afc_pct   = self.fbref.get_team_percentiles("Arsenal")
+        rival_pct = self.fbref.get_team_percentiles(rival_team_key)
 
-        afc_stats   = self.api_client.get_team_stats(ARSENAL_TEAM_ID, PL_LEAGUE_ID, STANDINGS_SEASON)
-        rival_stats = self.api_client.get_team_stats(rival_info["id"], rival_league_id, STANDINGS_SEASON)
-
-        if not afc_stats:
-            return {"error": "Could not fetch Arsenal team stats from API."}
-        if not rival_stats:
-            return {"error": f"Could not fetch {rival_team_key} team stats from API."}
-
-        afc_raw   = self.extractor.extract_team_radar_values(afc_stats)
-        rival_raw = self.extractor.extract_team_radar_values(rival_stats)
-        afc_pct   = self.extractor.percentile_normalise(afc_raw)
-        rival_pct = self.extractor.percentile_normalise(rival_raw)
+        if not afc_pct:
+            return {"error": "Could not fetch Arsenal stats from FBref. Try again in a moment."}
+        if not rival_pct:
+            return {"error": f"Could not fetch {rival_team_key} stats from FBref."}
 
         labels = [m[0] for m in TEAM_RADAR_METRICS]
         keys   = [m[1] for m in TEAM_RADAR_METRICS]
 
         if not all(k in afc_pct for k in keys):
-            return {"error": "Incomplete Arsenal team stats — try again shortly."}
+            missing = [k for k in keys if k not in afc_pct]
+            return {"error": f"Missing Arsenal FBref metrics: {missing}"}
         if not all(k in rival_pct for k in keys):
-            return {"error": f"Incomplete {rival_team_key} team stats — try again shortly."}
+            missing = [k for k in keys if k not in rival_pct]
+            return {"error": f"Missing {rival_team_key} FBref metrics: {missing}"}
 
-        vals_a = [afc_pct[k] for k in keys]
-        vals_b = [rival_pct[k] for k in keys]
+        vals_a = [round(afc_pct[k],   1) for k in keys]
+        vals_b = [round(rival_pct[k], 1) for k in keys]
 
-        rival_league_name = LEAGUE_NAMES.get(rival_league_id, "Premier League")
         title    = f"Arsenal FC  vs  {rival_team_key}"
-        subtitle = f"Team Radar  ·  {rival_league_name}  ·  2025/26"
+        subtitle = f"Team Radar  ·  Premier League  ·  2025/26"
 
         img_bytes = self.renderer.render(
             labels=labels, values_a=vals_a, label_a="Arsenal FC",
