@@ -114,38 +114,15 @@ EPL_COLOURS = {
     "Arsenal":             "#EF0107",
 }
 
-# Static GW31 2025/26 snapshot — used when Understat is unavailable
-# Percentiles computed vs all 20 PL teams. Update weekly if needed.
-STATIC_2526 = {
-    "Liverpool":         {"goals":95,"attacking":97,"defending":88,"possession":82,"pressing":91,"physicality":88,"counters":95},
-    "Arsenal":           {"goals":88,"attacking":86,"defending":94,"possession":86,"pressing":88,"physicality":92,"counters":87},
-    "Nottingham Forest": {"goals":72,"attacking":61,"defending":97,"possession":38,"pressing":72,"physicality":78,"counters":55},
-    "Chelsea":           {"goals":82,"attacking":79,"defending":72,"possession":78,"pressing":68,"physicality":68,"counters":82},
-    "Manchester City":   {"goals":78,"attacking":88,"defending":76,"possession":91,"pressing":62,"physicality":72,"counters":84},
-    "Newcastle":         {"goals":80,"attacking":72,"defending":78,"possession":56,"pressing":78,"physicality":74,"counters":65},
-    "Aston Villa":       {"goals":75,"attacking":74,"defending":68,"possession":62,"pressing":74,"physicality":62,"counters":72},
-    "Brighton":          {"goals":62,"attacking":68,"defending":62,"possession":84,"pressing":82,"physicality":58,"counters":78},
-    "Bournemouth":       {"goals":72,"attacking":65,"defending":58,"possession":48,"pressing":62,"physicality":52,"counters":60},
-    "Fulham":            {"goals":68,"attacking":62,"defending":58,"possession":52,"pressing":56,"physicality":56,"counters":58},
-    "Brentford":         {"goals":65,"attacking":58,"defending":55,"possession":44,"pressing":65,"physicality":62,"counters":52},
-    "Tottenham":         {"goals":58,"attacking":64,"defending":42,"possession":68,"pressing":58,"physicality":48,"counters":62},
-    "West Ham":          {"goals":48,"attacking":52,"defending":48,"possession":46,"pressing":52,"physicality":44,"counters":46},
-    "Crystal Palace":    {"goals":45,"attacking":42,"defending":45,"possession":28,"pressing":38,"physicality":42,"counters":32},
-    "Everton":           {"goals":38,"attacking":38,"defending":52,"possession":34,"pressing":44,"physicality":38,"counters":36},
-    "Wolves":            {"goals":35,"attacking":35,"defending":35,"possession":42,"pressing":42,"physicality":32,"counters":40},
-    "Manchester United": {"goals":42,"attacking":45,"defending":38,"possession":58,"pressing":48,"physicality":28,"counters":44},
-    "Leicester":         {"goals":28,"attacking":28,"defending":22,"possession":32,"pressing":28,"physicality":22,"counters":28},
-    "Ipswich":           {"goals":22,"attacking":22,"defending":18,"possession":22,"pressing":22,"physicality":18,"counters":22},
-    "Southampton":       {"goals":12,"attacking":12,"defending":12,"possession":12,"pressing":12,"physicality":12,"counters":12},
-}
+LAST_FETCH_PATH = "team_stats_last_fetch.json"
 
 
 class TeamStatsScraper:
     """
     Fetches PL team stats from Understat (xG, xGA, PPDA, deep completions).
-    Falls back to STATIC_2526 snapshot if Understat is blocked.
-    Percentile ranks computed against all 20 PL teams.
-    Cache TTL: 6 hours.
+    On every successful fetch: saves result to disk.
+    On failure: loads from disk (last known good). No hardcoded data.
+    Cache TTL: 6 hours in-memory.
     """
 
     HEADERS = {
@@ -160,34 +137,47 @@ class TeamStatsScraper:
     def __init__(self):
         self._cache:      Optional[Dict] = None
         self._cache_time: Optional[datetime] = None
-        self._using_static = False
 
     def _pct_rank(self, values: Dict[str, float], higher_is_better: bool = True) -> Dict[str, float]:
-        """Rank a dict of {team: value} as percentiles 0-99."""
-        teams = list(values.keys())
-        vals  = [values[t] for t in teams]
-        s = pd.Series(vals, index=teams)
-        if higher_is_better:
-            ranked = s.rank(pct=True, method="average") * 99
-        else:
-            ranked = (1 - s.rank(pct=True, method="average")) * 99
+        s = pd.Series(list(values.values()), index=list(values.keys()))
+        ranked = s.rank(pct=True, method="average") * 99
+        if not higher_is_better:
+            ranked = 99 - ranked
         return ranked.round(1).to_dict()
 
+    def _save_to_disk(self, data: Dict) -> None:
+        try:
+            payload = {"fetched_at": datetime.now().isoformat(), "data": data}
+            with open(LAST_FETCH_PATH, "w") as f:
+                json.dump(payload, f)
+            logger.info(f"TeamStats: saved {len(data)} teams to disk")
+        except Exception as e:
+            logger.warning(f"TeamStats: disk save failed: {e}")
+
+    def _load_from_disk(self) -> Optional[Dict]:
+        try:
+            if not os.path.exists(LAST_FETCH_PATH):
+                return None
+            with open(LAST_FETCH_PATH) as f:
+                payload = json.load(f)
+            data = payload.get("data", {})
+            if data and "Arsenal" in data:
+                logger.info(f"TeamStats: loaded from disk (fetched {payload.get('fetched_at', '?')})")
+                return data
+        except Exception as e:
+            logger.warning(f"TeamStats: disk load failed: {e}")
+        return None
+
     def _fetch_understat(self) -> Optional[Dict]:
-        """Scrape Understat for current season team stats."""
         try:
             session = requests.Session()
             session.get("https://understat.com", headers=self.HEADERS, timeout=10)
             r = session.get(UNDERSTAT_URL, headers=self.HEADERS, timeout=20)
             r.raise_for_status()
-
             match = re.search(r"teamsData\s*=\s*JSON\.parse\(\'(.+?)\'\)", r.text)
-            if not match:
-                match = re.search(r'teamsData\s*=\s*JSON\.parse\(\'(.+?)\'\)', r.text)
             if not match:
                 logger.warning("Understat: teamsData not found in response")
                 return None
-
             raw = match.group(1).encode("utf-8").decode("unicode_escape")
             data = json.loads(raw)
             logger.info(f"Understat: {len(data)} teams found")
@@ -197,90 +187,85 @@ class TeamStatsScraper:
             return None
 
     def _parse_understat(self, data: Dict) -> Dict[str, Dict]:
-        """Convert Understat raw data to {team: {metric: percentile}}."""
         raw = {}
         for team_name, team_data in data.items():
             history = team_data.get("history", [])
             if not history:
                 continue
-            xg    = sum(float(m.get("xG",  0)) for m in history)
-            xga   = sum(float(m.get("xGA", 0)) for m in history)
-            npxg  = sum(float(m.get("npxG",  xg))  for m in history)
-            npxga = sum(float(m.get("npxGA", xga)) for m in history)
-            scored = sum(int(m.get("scored", 0))  for m in history)
-            missed = sum(int(m.get("missed", 0))  for m in history)
-            pts    = sum(int(m.get("pts",    0))  for m in history)
-            deep   = sum(int(m.get("deep",   0))  for m in history)
+            xg     = sum(float(m.get("xG",  0)) for m in history)
+            xga    = sum(float(m.get("xGA", 0)) for m in history)
+            npxg   = sum(float(m.get("npxG",  xg))  for m in history)
+            npxga  = sum(float(m.get("npxGA", xga)) for m in history)
+            scored = sum(int(m.get("scored", 0)) for m in history)
+            missed = sum(int(m.get("missed", 0)) for m in history)
+            pts    = sum(int(m.get("pts",    0)) for m in history)
+            deep   = sum(int(m.get("deep",   0)) for m in history)
             ppda_att = sum(float(m.get("ppda", {}).get("att", 0)) if isinstance(m.get("ppda"), dict) else 0 for m in history)
             ppda_def = sum(float(m.get("ppda", {}).get("def", 1)) if isinstance(m.get("ppda"), dict) else 1 for m in history)
             ppda = ppda_att / ppda_def if ppda_def > 0 else 99
-
             mapped = UNDERSTAT_NAME_MAP.get(team_name, team_name)
             raw[mapped] = {
                 "xG": npxg, "xGA": npxga,
                 "Goals": scored, "GoalsAg": missed,
                 "Pts": pts, "Deep": deep, "PPDA": ppda,
             }
-
         if not raw:
             return {}
-
-        # Compute percentiles across all teams
-        result = {}
-        metrics_higher = ["xG", "Goals", "Pts", "Deep"]
-        metrics_lower  = ["xGA", "GoalsAg", "PPDA"]
-
         pcts = {}
-        for m in metrics_higher:
-            vals = {t: raw[t][m] for t in raw}
-            pcts[m] = self._pct_rank(vals, higher_is_better=True)
-        for m in metrics_lower:
-            vals = {t: raw[t][m] for t in raw}
-            pcts[m] = self._pct_rank(vals, higher_is_better=False)
-
-        for team in raw:
-            result[team] = {
-                "goals":       pcts["Goals"].get(team, 50),
-                "attacking":   pcts["xG"].get(team, 50),
-                "defending":   pcts["xGA"].get(team, 50),
-                "possession":  pcts["Deep"].get(team, 50),
-                "pressing":    pcts["PPDA"].get(team, 50),
-                "physicality": pcts["GoalsAg"].get(team, 50),
-                "counters":    pcts["Pts"].get(team, 50),
+        for m in ["xG", "Goals", "Pts", "Deep"]:
+            pcts[m] = self._pct_rank({t: raw[t][m] for t in raw}, higher_is_better=True)
+        for m in ["xGA", "GoalsAg", "PPDA"]:
+            pcts[m] = self._pct_rank({t: raw[t][m] for t in raw}, higher_is_better=False)
+        return {
+            team: {
+                "goals":       pcts["Goals"].get(team, 0),
+                "attacking":   pcts["xG"].get(team, 0),
+                "defending":   pcts["xGA"].get(team, 0),
+                "possession":  pcts["Deep"].get(team, 0),
+                "pressing":    pcts["PPDA"].get(team, 0),
+                "physicality": pcts["GoalsAg"].get(team, 0),
+                "counters":    pcts["Pts"].get(team, 0),
             }
-
-        return result
+            for team in raw
+        }
 
     def fetch_all_team_stats(self) -> Dict[str, Dict]:
-        """Returns {team: {metric: percentile}}. Always returns data (static fallback)."""
-        # Cache check
+        """
+        Priority: in-memory cache → fresh Understat → last disk fetch.
+        No hardcoded fallback — surfaces a real error if all fail.
+        """
+        # 1. In-memory cache
         if (self._cache is not None and self._cache_time is not None and
                 datetime.now() - self._cache_time < timedelta(hours=self.CACHE_TTL_HOURS)):
-            source = "static" if self._using_static else "live"
-            logger.info(f"TeamStats: using cached {source} data")
+            logger.info("TeamStats: using in-memory cache")
             return self._cache
 
-        # Try Understat
+        # 2. Fresh Understat fetch
         raw = self._fetch_understat()
         if raw:
             parsed = self._parse_understat(raw)
             if parsed and "Arsenal" in parsed:
                 self._cache      = parsed
                 self._cache_time = datetime.now()
-                self._using_static = False
-                logger.info(f"TeamStats: live Understat data — Arsenal: {parsed.get('Arsenal')}")
+                self._save_to_disk(parsed)
+                logger.info(f"TeamStats: fresh Understat — Arsenal: {parsed.get('Arsenal')}")
                 return self._cache
-            logger.warning("Understat: parse returned no Arsenal data — using static")
+            logger.warning("Understat: parse missing Arsenal data")
 
-        # Static fallback
-        logger.info("TeamStats: using static 2025/26 snapshot")
-        self._cache      = STATIC_2526.copy()
-        self._cache_time = datetime.now()
-        self._using_static = True
-        return self._cache
+        # 3. Last successful fetch from disk
+        disk = self._load_from_disk()
+        if disk:
+            self._cache      = disk
+            self._cache_time = datetime.now()
+            return self._cache
+
+        logger.error("TeamStats: all sources failed — no data available")
+        return {}
 
     def get_team_percentiles(self, team_name: str) -> Optional[Dict[str, float]]:
         data = self.fetch_all_team_stats()
+        if not data:
+            return None
         if team_name in data:
             return {k: float(v) for k, v in data[team_name].items()}
         matches = [t for t in data if team_name.lower() in t.lower()
@@ -288,7 +273,7 @@ class TeamStatsScraper:
         if matches:
             logger.info(f"TeamStats fuzzy: '{team_name}' → '{matches[0]}'")
             return {k: float(v) for k, v in data[matches[0]].items()}
-        logger.warning(f"TeamStats: '{team_name}' not found")
+        logger.warning(f"TeamStats: '{team_name}' not found in {list(data.keys())}")
         return None
 
 # ─────────────────────────────────────────────────────────────────────────────
