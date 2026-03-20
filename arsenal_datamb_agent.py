@@ -538,57 +538,41 @@ class TeamStatsScraper:
 PLAYER_RADAR_METRICS = {
     "GK": [
         ("Save %",           "save_pct"),
-        ("Aerial Won",       "aerial_won"),
-        ("Passes Comp/90",   "passes_per90"),
-        ("Long Pass Acc %",  "long_pass_acc"),
         ("Clean Sheets",     "clean_sheets"),
-        ("Prevented Goals",  "prevented_goals"),
+        ("Goals Ag/90",      "goals_against_per90"),
+        ("Saves/90",         "saves_per90"),
+        ("Shots Faced",      "shots_faced"),
+        ("Total Saves",      "saves"),
+    ],
+    "DF": [
+        ("Tackles Won",      "tackles_won"),
         ("Interceptions",    "interceptions"),
-    ],
-    "CB": [
-        ("Passes Comp/90",   "passes_per90"),
-        ("Fwd Pass Acc %",   "fwd_pass_acc"),
-        ("Prog Passes/90",   "prog_passes"),
-        ("Poss Won/90",      "possession_won"),
-        ("Def Duels Won %",  "def_duels_pct"),
-        ("Aerial Won %",     "aerial_won_pct"),
-        ("Prog Carries/90",  "prog_carries"),
-    ],
-    "FB": [
-        ("Acc Crosses/90",   "accurate_crosses"),
-        ("xA/90",            "xa_per90"),
-        ("Prog Passes/90",   "prog_passes"),
-        ("Poss Won/90",      "possession_won"),
-        ("Def Duels Won %",  "def_duels_pct"),
-        ("Aerial Won %",     "aerial_won_pct"),
-        ("Prog Carries/90",  "prog_carries"),
+        ("Blocks",           "blocks"),
+        ("Clearances",       "clearances"),
+        ("Pass Cmp %",       "passes_cmp_pct"),
+        ("Long Pass %",      "passes_long_pct"),
+        ("Key Passes",       "key_passes"),
+        ("Goals/90",         "goals_per90"),
     ],
     "MF": [
-        ("Duels Won %",      "duels_won_pct"),
-        ("Poss Won/90",      "possession_won"),
-        ("Prog Carries/90",  "prog_carries"),
-        ("Fwd Passes/90",    "fwd_passes"),
-        ("Fwd Pass Acc %",   "fwd_pass_acc"),
-        ("Key Passes/90",    "key_passes"),
-        ("Prog Passes/90",   "prog_passes"),
+        ("Key Passes",       "key_passes"),
+        ("Pass Final 3rd",   "passes_final_third"),
+        ("Pass Cmp %",       "passes_cmp_pct"),
+        ("Tackles Won",      "tackles_won"),
+        ("Interceptions",    "interceptions"),
+        ("Take-Ons Won %",   "take_ons_won_pct"),
+        ("Carries Fin 3rd",  "carries_final_third"),
+        ("Goals/90",         "goals_per90"),
     ],
-    "WG": [
-        ("Prog Carries/90",  "prog_carries"),
-        ("Succ Dribbles/90", "succ_dribbles"),
-        ("NP Goals/90",      "np_goals"),
-        ("npxG+xA/90",       "npxg_xa"),
-        ("Assists/90",       "assists_per90"),
-        ("Key Passes/90",    "key_passes"),
-        ("Acc Crosses/90",   "accurate_crosses"),
-    ],
-    "ST": [
-        ("NP Goals/90",      "np_goals"),
-        ("NP xG/90",         "np_xg"),
-        ("Goal Conv %",      "goal_conv"),
-        ("Touches in Box",   "touches_box"),
-        ("Aerial Won %",     "aerial_won_pct"),
-        ("xA/90",            "xa_per90"),
-        ("Off Duels Won/90", "off_duels_won"),
+    "FW": [
+        ("Goals/90",              "goals_per90"),
+        ("Assists/90",            "assists_per90"),
+        ("Shots on Tgt %",        "shots_on_target_pct"),
+        ("Goals/Shot on Tgt",     "goals_per_shot_on_target"),
+        ("Key Passes",            "key_passes"),
+        ("Take-Ons Won %",        "take_ons_won_pct"),
+        ("Carries Pen Area",      "carries_penalty_area"),
+        ("Touches Att 3rd",       "touches_att_3rd"),
     ],
 }
 
@@ -1175,6 +1159,8 @@ class RadarRenderer:
         label_b:      str = None,
         title:        str = "",
         subtitle:     str = "",
+        subtitle_a:   str = "",
+        subtitle_b:   str = "",
         season:       str = "2025/26",
         rival_colour: str = None,
     ) -> bytes:
@@ -1217,7 +1203,7 @@ class RadarRenderer:
         ax_t.text(cx[0], 0.60, label_a,
             ha="left", va="center", fontsize=10, color=self.ARSENAL_COL,
             fontweight="bold")
-        ax_t.text(cx[0], 0.46, f"Premier League, {season}",
+        ax_t.text(cx[0], 0.46, subtitle_a or f"Premier League, {season}",
             ha="left", va="center", fontsize=7, color=self.TEXT_LIGHT)
         for i, v in enumerate(values_a):
             if i + 1 < len(cx):
@@ -1233,7 +1219,7 @@ class RadarRenderer:
             ax_t.text(cx[0], 0.24, label_b,
                 ha="left", va="center", fontsize=10, color=rival_col,
                 fontweight="bold")
-            ax_t.text(cx[0], 0.10, f"Premier League, {season}",
+            ax_t.text(cx[0], 0.10, subtitle_b or f"Premier League, {season}",
                 ha="left", va="center", fontsize=7, color=self.TEXT_LIGHT)
             for i, v in enumerate(values_b):
                 if i + 1 < len(cx):
@@ -1469,62 +1455,90 @@ class ArsenalDataMBAgent:
 
     # ── Player vs Player ──────────────────────────────────────────────────
 
+    def _load_player_stats(self) -> Dict:
+        """Load player percentiles from disk (pushed by push_players_from_files.py)."""
+        try:
+            with open("player_stats_last_fetch.json") as f:
+                payload = json.load(f)
+            return payload.get("data", {})
+        except FileNotFoundError:
+            logger.warning("No player_stats_last_fetch.json found — run push_players_from_files.py locally")
+            return {}
+
+    def _map_pos_to_group(self, pos: str) -> str:
+        """Map FBref position string to our metric group key."""
+        pos = pos.upper()
+        if "GK" in pos:                          return "GK"
+        if any(p in pos for p in ["CB","DF","LB","RB","WB"]): return "DF"
+        if any(p in pos for p in ["MF","CM","DM","AM"]):      return "MF"
+        return "FW"
+
     def build_player_comparison(
         self,
-        arsenal_player_id: int,     # player ID from live squad
         arsenal_player_name: str,
-        arsenal_pos: str,           # pos code: GK/CB/MF/WG/ST
-        rival_name: str,            # name to search
-        rival_team_id: int = None,
-        rival_league_id: int = None,
+        rival_player_name: str = "",
         tone: str = "hype",
         custom_note: str = "",
+        season: str = "2025/26",
     ) -> Dict:
-        metrics_def   = PLAYER_RADAR_METRICS.get(arsenal_pos, PLAYER_RADAR_METRICS["MF"])
-        metric_labels = [m[0] for m in metrics_def]
-        metric_keys   = [m[1] for m in metrics_def]
+        player_data = self._load_player_stats()
+        if not player_data:
+            return {"error": "No player stats available. Run push_players_from_files.py locally first."}
 
-        # Arsenal player stats
-        afc_data = self.api_client.get_player_stats(arsenal_player_id)
-        if not afc_data:
-            return {"error": f"Could not fetch stats for {arsenal_player_name}"}
+        # Find Arsenal player
+        arsenal_entry = player_data.get(arsenal_player_name)
+        if not arsenal_entry:
+            # Fuzzy search
+            matches = [n for n in player_data if arsenal_player_name.lower() in n.lower()]
+            if matches:
+                arsenal_entry = player_data[matches[0]]
+                arsenal_player_name = matches[0]
+            else:
+                return {"error": f"Player '{arsenal_player_name}' not found. Available Arsenal players: {[n for n, p in player_data.items() if 'Arsenal' in str(p.get('team',''))]}"}
 
-        afc_raw = self.extractor.extract_player_radar_values(afc_data, arsenal_pos)
-        afc_pct = self.extractor.percentile_normalise(afc_raw)
+        pos_group    = self._map_pos_to_group(arsenal_entry.get("pos", "MF"))
+        metrics_def  = PLAYER_RADAR_METRICS.get(pos_group, PLAYER_RADAR_METRICS["MF"])
+        metric_labels= [m[0] for m in metrics_def]
+        metric_keys  = [m[1] for m in metrics_def]
 
-        if not afc_pct:
-            return {"error": f"No stat data returned for {arsenal_player_name} — they may not have enough minutes this season."}
+        afc_pcts = arsenal_entry.get("percentiles", {})
+        vals_a   = [float(afc_pcts.get(k, 50)) for k in metric_keys]
 
-        vals_a = [afc_pct[k] for k in metric_keys if k in afc_pct]
-        if len(vals_a) != len(metric_keys):
-            missing = [k for k in metric_keys if k not in afc_pct]
-            return {"error": f"Incomplete stats for {arsenal_player_name}. Missing: {missing}"}
+        # Find rival player
+        vals_b        = None
+        rival_display = None
+        rival_team    = None
 
-        # Rival player stats
-        vals_b     = None
-        rival_data = None
-        if rival_name:
-            rival_data = self.api_client.search_player(
-                rival_name, rival_team_id, rival_league_id
-            )
-            if rival_data:
-                rival_raw = self.extractor.extract_player_radar_values(rival_data, arsenal_pos)
-                rival_pct = self.extractor.percentile_normalise(rival_raw)
-                if rival_pct and all(k in rival_pct for k in metric_keys):
-                    vals_b = [rival_pct[k] for k in metric_keys]
-                else:
-                    logger.warning(f"Incomplete stats for rival {rival_name} — plotting Arsenal only")
-                    rival_data = None
+        if rival_player_name:
+            rival_entry = player_data.get(rival_player_name)
+            if not rival_entry:
+                matches = [n for n in player_data if rival_player_name.lower() in n.lower()]
+                if matches:
+                    rival_entry   = player_data[matches[0]]
+                    rival_player_name = matches[0]
 
-        rival_display = rival_data["player"]["name"] if rival_data else None
-        title    = f"{arsenal_player_name}  {'vs  ' + rival_display if rival_display else ''}"
-        subtitle = f"{arsenal_pos}  ·  Premier League 2025/26  ·  Percentile Rankings"
+            if rival_entry:
+                rival_pcts    = rival_entry.get("percentiles", {})
+                vals_b        = [float(rival_pcts.get(k, 50)) for k in metric_keys]
+                rival_display = rival_player_name
+                rival_team    = rival_entry.get("team", "")
+
+        arsenal_team = arsenal_entry.get("team", "Arsenal")
+        label_a = f"{arsenal_player_name}"
+        label_b = rival_display
+
+        subtitle_a = f"{arsenal_team}, {season}"
+        subtitle_b = f"{rival_team}, {season}" if rival_team else ""
 
         img_bytes = self.renderer.render(
-            labels=metric_labels, values_a=vals_a,
-            label_a=arsenal_player_name,
-            values_b=vals_b, label_b=rival_display,
-            title=title, subtitle=subtitle,
+            labels=metric_labels,
+            values_a=vals_a,
+            label_a=label_a,
+            subtitle_a=subtitle_a,
+            values_b=vals_b,
+            label_b=label_b,
+            subtitle_b=subtitle_b,
+            season=season,
         )
 
         metrics_for_narrative = [
@@ -1540,10 +1554,16 @@ class ArsenalDataMBAgent:
         )
 
         return {
-            "image_bytes":  img_bytes, "narrative": text,
-            "labels":       metric_labels, "values_a": vals_a,
-            "values_b":     vals_b, "arsenal_name": arsenal_player_name,
-            "rival_name":   rival_display, "tone": tone, "mode": "player",
+            "image_bytes":  img_bytes,
+            "narrative":    text,
+            "labels":       metric_labels,
+            "values_a":     vals_a,
+            "values_b":     vals_b,
+            "arsenal_name": arsenal_player_name,
+            "rival_name":   rival_display,
+            "tone":         tone,
+            "mode":         "player",
+            "pos":          pos_group,
         }
 
     # ── Team vs Team ──────────────────────────────────────────────────────
