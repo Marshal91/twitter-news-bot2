@@ -1156,14 +1156,12 @@ class RadarRenderer:
     """
 
     BG          = "#FFFFFF"
-    ARSENAL_COL = "#EF0107"
-    RIVAL_COL   = "#7B6BDE"
+    ARSENAL_COL = "#EF0107"   # Arsenal red — always
+    RIVAL_COL   = "#7B6BDE"   # Purple — always used for rival/comparison
     GRID        = "#E8EAF0"
     SPOKE       = "#DDE0EA"
     TEXT_MED    = "#666680"
     TEXT_LIGHT  = "#AAAABC"
-    AFC_LABEL   = "#3D5AF1"
-    RIVAL_LABEL = "#E8356D"
     WATERMARK   = "#CCCCDD"
 
     def render(
@@ -1179,7 +1177,7 @@ class RadarRenderer:
         rival_colour: str = None,
     ) -> bytes:
 
-        rival_col = rival_colour or self.RIVAL_COL
+        rival_col = self.RIVAL_COL   # always purple regardless of club
         n      = len(labels)
         # Start at top, go clockwise
         angles = np.linspace(0, 2*np.pi, n, endpoint=False) + np.pi/2
@@ -1215,7 +1213,7 @@ class RadarRenderer:
 
         # Arsenal row
         ax_t.text(cx[0], 0.60, label_a,
-            ha="left", va="center", fontsize=10, color=self.AFC_LABEL,
+            ha="left", va="center", fontsize=10, color=self.ARSENAL_COL,
             fontweight="bold")
         ax_t.text(cx[0], 0.46, f"Premier League, {season}",
             ha="left", va="center", fontsize=7, color=self.TEXT_LIGHT)
@@ -1223,7 +1221,7 @@ class RadarRenderer:
             if i + 1 < len(cx):
                 ax_t.text(cx[i+1], 0.53, f"{round(v, 1)}",
                     ha="center", va="center", fontsize=9.5,
-                    color=self.AFC_LABEL, fontweight="bold")
+                    color=self.ARSENAL_COL, fontweight="bold")
 
         # Row divider
         ax_t.axhline(0.34, color="#E8EAF0", linewidth=0.6)
@@ -1231,7 +1229,7 @@ class RadarRenderer:
         # Rival row (if comparison)
         if values_b is not None and label_b:
             ax_t.text(cx[0], 0.24, label_b,
-                ha="left", va="center", fontsize=10, color=self.RIVAL_LABEL,
+                ha="left", va="center", fontsize=10, color=rival_col,
                 fontweight="bold")
             ax_t.text(cx[0], 0.10, f"Premier League, {season}",
                 ha="left", va="center", fontsize=7, color=self.TEXT_LIGHT)
@@ -1239,7 +1237,7 @@ class RadarRenderer:
                 if i + 1 < len(cx):
                     ax_t.text(cx[i+1], 0.17, f"{round(v, 1)}",
                         ha="center", va="center", fontsize=9.5,
-                        color=self.RIVAL_LABEL, fontweight="bold")
+                        color=rival_col, fontweight="bold")
 
         # Table border
         for spine in ["top", "bottom", "left", "right"]:
