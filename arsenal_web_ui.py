@@ -682,6 +682,52 @@ def debug_stats():
     })
 
 
+@app.route("/refresh-players", methods=["POST"])
+def refresh_players():
+    """
+    Accepts fresh player stats POSTed from a local machine.
+    Body: {"secret": "...", "data": {"David Raya": {"percentiles": {...}, "team": "Arsenal", ...}}}
+    """
+    REFRESH_SECRET = os.getenv("REFRESH_SECRET", "arsenal-refresh-2526")
+    payload = request.get_json(force=True, silent=True) or {}
+    if payload.get("secret") != REFRESH_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = payload.get("data", {})
+    if not data:
+        return jsonify({"error": "No player data provided"}), 400
+
+    # Save to disk
+    try:
+        import json as _json
+        with open("player_stats_last_fetch.json", "w") as f:
+            _json.dump({"fetched_at": datetime.now().isoformat(), "data": data}, f)
+        logger.info(f"Player stats refreshed: {len(data)} players saved")
+    except Exception as e:
+        logger.error(f"Player stats save failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+    arsenal = {n: p for n, p in data.items() if "Arsenal" in str(p.get("team", ""))}
+    return jsonify({"ok": True, "players": len(data), "arsenal_players": len(arsenal)})
+
+
+@app.route("/debug/players")
+def debug_players():
+    """Show loaded player stats."""
+    try:
+        with open("player_stats_last_fetch.json") as f:
+            payload = __import__("json").load(f)
+        data = payload.get("data", {})
+        arsenal = {n: p for n, p in data.items() if "Arsenal" in str(p.get("team", ""))}
+        return jsonify({
+            "fetched_at": payload.get("fetched_at"),
+            "total_players": len(data),
+            "arsenal_players": sorted(arsenal.keys()),
+            "arsenal_sample": {k: v for k, v in list(arsenal.items())[:3]},
+        })
+    except FileNotFoundError:
+        return jsonify({"error": "No player data yet — run push_players_from_fbref.py locally"})
+
+
 @app.route("/refresh-stats", methods=["POST"])
 def refresh_stats():
     """
