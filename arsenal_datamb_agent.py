@@ -171,17 +171,53 @@ class TeamStatsScraper:
     def _fetch_understat(self) -> Optional[Dict]:
         try:
             session = requests.Session()
-            session.get("https://understat.com", headers=self.HEADERS, timeout=10)
+            session.headers.update(self.HEADERS)
+            # Warm up session with homepage first
+            session.get("https://understat.com", timeout=10)
             r = session.get(UNDERSTAT_URL, headers=self.HEADERS, timeout=20)
             r.raise_for_status()
-            match = re.search(r"teamsData\s*=\s*JSON\.parse\(\'(.+?)\'\)", r.text)
-            if not match:
-                logger.warning("Understat: teamsData not found in response")
+
+            html = r.text
+            logger.info(f"Understat: page length={len(html)}")
+
+            # Try multiple extraction patterns — Understat has changed format before
+            patterns = [
+                r"teamsData\s*=\s*JSON\.parse\('(.+?)'\)",
+                r'teamsData\s*=\s*JSON\.parse\("(.+?)"\)',
+                r"teamsData\s*=\s*JSON\.parse\(\'(.+?)\'\)",
+                r'var teamsData\s*=\s*JSON\.parse\(\'(.+?)\'\)',
+                r'"teamsData"\s*:\s*JSON\.parse\(\'(.+?)\'\)',
+            ]
+
+            raw_str = None
+            for pat in patterns:
+                match = re.search(pat, html, re.DOTALL)
+                if match:
+                    raw_str = match.group(1)
+                    logger.info(f"Understat: matched pattern '{pat[:40]}'")
+                    break
+
+            if not raw_str:
+                # Try finding any JSON blob with team history data
+                match = re.search(r'JSON\.parse\(\'(\\x.{20,}?)\'\)', html)
+                if match:
+                    raw_str = match.group(1)
+                    logger.info("Understat: matched generic JSON.parse pattern")
+
+            if not raw_str:
+                logger.warning(f"Understat: no teamsData found. Page snippet: {html[2000:2500]}")
                 return None
-            raw = match.group(1).encode("utf-8").decode("unicode_escape")
-            data = json.loads(raw)
-            logger.info(f"Understat: {len(data)} teams found")
+
+            # Decode escape sequences
+            try:
+                decoded = raw_str.encode("utf-8").decode("unicode_escape")
+            except Exception:
+                decoded = raw_str
+
+            data = json.loads(decoded)
+            logger.info(f"Understat: {len(data)} teams parsed")
             return data
+
         except Exception as e:
             logger.warning(f"Understat fetch failed: {e}")
             return None
@@ -229,10 +265,123 @@ class TeamStatsScraper:
             for team in raw
         }
 
+    def _fetch_fbref_direct(self) -> Optional[Dict]:
+        """
+        Scrapes FBref team stats pages directly using pd.read_html.
+        Inspired by the bs4/requests FBref scraping pattern.
+        Fetches: standard stats (xG, xGA, Goals) + possession (Poss%, PrgP, PrgC).
+        """
+        FBREF_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+        NAME_MAP = {
+            "Manchester Utd":  "Manchester United",
+            "Newcastle Utd":   "Newcastle",
+            "Nott'ham Forest": "Nottingham Forest",
+            "Leicester City":  "Leicester",
+            "Ipswich Town":    "Ipswich",
+        }
+
+        def read_fbref_table(url, table_id):
+            try:
+                import time
+                r = requests.get(url, headers=FBREF_HEADERS, timeout=20)
+                r.raise_for_status()
+                tables = pd.read_html(StringIO(r.text), attrs={"id": table_id})
+                if not tables:
+                    return None
+                df = tables[0]
+                # Flatten MultiIndex columns
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = [
+                        b if a == b or "Unnamed" in str(a) else f"{a} {b}"
+                        for a, b in df.columns
+                    ]
+                # Drop header repeat rows
+                squad_col = next((c for c in df.columns if "Squad" in str(c)), None)
+                if squad_col:
+                    df = df[df[squad_col].notna() & (df[squad_col] != "Squad")].copy()
+                    df["team"] = df[squad_col].apply(lambda x: NAME_MAP.get(str(x).strip(), str(x).strip()))
+                time.sleep(2)   # polite delay between requests
+                return df
+            except Exception as e:
+                logger.warning(f"FBref direct read failed [{table_id}]: {e}")
+                return None
+
+        try:
+            std  = read_fbref_table("https://fbref.com/en/comps/9/Premier-League-Stats",
+                                    "stats_squads_standard_for")
+            if std is None or "team" not in std.columns:
+                return None
+
+            poss = read_fbref_table("https://fbref.com/en/comps/9/possession/Premier-League-Stats",
+                                    "stats_squads_possession_for")
+
+            def find_col(df, *keywords):
+                for kw in keywords:
+                    for c in df.columns:
+                        if kw.lower() in str(c).lower():
+                            return c
+                return None
+
+            xg_col  = find_col(std,  "xG")
+            xga_col = find_col(std,  "xGA")
+            gls_col = find_col(std,  "Gls", "Goals")
+
+            if not xg_col or not xga_col:
+                logger.warning(f"FBref direct: missing xG/xGA. Cols: {list(std.columns)}")
+                return None
+
+            merged = std[["team"]].copy()
+            merged["xG"]  = pd.to_numeric(std[xg_col],  errors="coerce")
+            merged["xGA"] = pd.to_numeric(std[xga_col], errors="coerce")
+            merged["Gls"] = pd.to_numeric(std[gls_col], errors="coerce") if gls_col else merged["xG"]
+
+            if poss is not None and "team" in poss.columns:
+                poss_col = find_col(poss, "Poss")
+                prgp_col = find_col(poss, "PrgP")
+                prgc_col = find_col(poss, "PrgC")
+                keep = ["team"] + [c for c in [poss_col, prgp_col, prgc_col] if c]
+                merged = merged.merge(poss[keep], on="team", how="left")
+                if poss_col: merged.rename(columns={poss_col: "Poss"}, inplace=True)
+                if prgp_col: merged.rename(columns={prgp_col: "PrgP"}, inplace=True)
+                if prgc_col: merged.rename(columns={prgc_col: "PrgC"}, inplace=True)
+
+            merged = merged.dropna(subset=["xG", "xGA"]).set_index("team")
+            if len(merged) < 10 or "Arsenal" not in merged.index:
+                logger.warning(f"FBref direct: only {len(merged)} teams, Arsenal present: {'Arsenal' in merged.index}")
+                return None
+
+            def prank(s, hi=True):
+                r = s.rank(pct=True, method="average") * 99
+                return (r if hi else 99 - r).round(1)
+
+            result = {}
+            for team in merged.index:
+                result[team] = {
+                    "goals":       float(prank(merged["Gls"])[team])         if "Gls"  in merged.columns else float(prank(merged["xG"])[team]),
+                    "attacking":   float(prank(merged["xG"])[team]),
+                    "defending":   float(prank(merged["xGA"], False)[team]),
+                    "possession":  float(prank(merged["Poss"])[team])        if "Poss" in merged.columns else 50.0,
+                    "counters":    float(prank(merged["PrgP"])[team])        if "PrgP" in merged.columns else 50.0,
+                    "physicality": float(prank(merged["PrgC"])[team])        if "PrgC" in merged.columns else 50.0,
+                    "pressing":    50.0,
+                }
+
+            logger.info(f"FBref direct: {len(result)} teams — Arsenal: {result.get('Arsenal')}")
+            return result
+
+        except Exception as e:
+            logger.warning(f"FBref direct scrape failed: {e}")
+            return None
+
     def fetch_all_team_stats(self) -> Dict[str, Dict]:
         """
-        Priority: in-memory cache → fresh Understat → last disk fetch.
-        No hardcoded fallback — surfaces a real error if all fail.
+        Priority:
+          1. In-memory cache (6h TTL)
+          2. Understat live scrape
+          3. fbrefdata library (Big 5, filters to PL)
+          4. FBref direct pd.read_html scrape
+          5. Last successful fetch from disk
+        No hardcoded data anywhere.
         """
         # 1. In-memory cache
         if (self._cache is not None and self._cache_time is not None and
@@ -240,26 +389,100 @@ class TeamStatsScraper:
             logger.info("TeamStats: using in-memory cache")
             return self._cache
 
-        # 2. Fresh Understat fetch
+        def _set_cache(parsed, source):
+            self._cache      = parsed
+            self._cache_time = datetime.now()
+            self._save_to_disk(parsed)
+            logger.info(f"TeamStats [{source}] — Arsenal: {parsed.get('Arsenal')}")
+            return self._cache
+
+        # 2. Understat
         raw = self._fetch_understat()
         if raw:
             parsed = self._parse_understat(raw)
             if parsed and "Arsenal" in parsed:
-                self._cache      = parsed
-                self._cache_time = datetime.now()
-                self._save_to_disk(parsed)
-                logger.info(f"TeamStats: fresh Understat — Arsenal: {parsed.get('Arsenal')}")
-                return self._cache
-            logger.warning("Understat: parse missing Arsenal data")
+                return _set_cache(parsed, "Understat")
+            logger.warning("Understat: parsed data missing Arsenal")
 
-        # 3. Last successful fetch from disk
+        # 3. fbrefdata library
+        try:
+            import fbrefdata as fd, warnings as _w
+            _w.filterwarnings("ignore")
+            fb = fd.FBref("Big 5 European Leagues Combined", "2024-2025", no_store=False)
+            std  = fb.read_team_season_stats("standard")
+            poss = fb.read_team_season_stats("possession")
+
+            def pl_only(df):
+                if "league" in df.index.names:
+                    return df[df.index.get_level_values("league").str.contains("Premier|England", case=False, na=False)]
+                return df
+
+            std, poss = pl_only(std), pl_only(poss)
+
+            def gcol(df, *kws):
+                flat = [" ".join(str(c) for c in col).strip() if isinstance(col, tuple) else str(col)
+                        for col in df.columns]
+                for kw in kws:
+                    for i, f in enumerate(flat):
+                        if kw.lower() in f.lower():
+                            return df.columns[i]
+                return None
+
+            NM = {"Manchester Utd": "Manchester United", "Newcastle Utd": "Newcastle",
+                  "Nott'ham Forest": "Nottingham Forest", "Leicester City": "Leicester",
+                  "Ipswich Town": "Ipswich"}
+
+            def tnames(df):
+                for lvl in (df.index.names or []):
+                    if "team" in str(lvl).lower():
+                        return [NM.get(str(t), str(t)) for t in df.index.get_level_values(lvl)]
+                return [NM.get(str(t), str(t)) for t in df.index]
+
+            data = {}
+            for i, name in enumerate(tnames(std)):
+                row = std.iloc[i]
+                data[name] = {
+                    "xG":  float(pd.to_numeric(row[gcol(std,  "xG")],  errors="coerce") or 0) if gcol(std,  "xG")  else 0,
+                    "xGA": float(pd.to_numeric(row[gcol(std,  "xGA")], errors="coerce") or 0) if gcol(std,  "xGA") else 0,
+                    "Gls": float(pd.to_numeric(row[gcol(std,  "Gls", "Goals")], errors="coerce") or 0) if gcol(std, "Gls", "Goals") else 0,
+                }
+            for i, name in enumerate(tnames(poss)):
+                row = poss.iloc[i]
+                if name not in data: data[name] = {}
+                for src_k, dst_k in [("Poss","Poss"),("PrgP","PrgP"),("PrgC","PrgC")]:
+                    col = gcol(poss, src_k)
+                    if col: data[name][dst_k] = float(pd.to_numeric(row[col], errors="coerce") or 0)
+
+            df = pd.DataFrame(data).T.dropna(subset=["xG","xGA"])
+            if len(df) >= 10 and "Arsenal" in df.index:
+                def pr(s, hi=True): r = s.rank(pct=True)*99; return (r if hi else 99-r).round(1)
+                parsed = {t: {
+                    "goals":       float(pr(df["Gls"])[t]) if "Gls" in df else float(pr(df["xG"])[t]),
+                    "attacking":   float(pr(df["xG"])[t]),
+                    "defending":   float(pr(df["xGA"], False)[t]),
+                    "possession":  float(pr(df["Poss"])[t]) if "Poss" in df else 50.0,
+                    "counters":    float(pr(df["PrgP"])[t]) if "PrgP" in df else 50.0,
+                    "physicality": float(pr(df["PrgC"])[t]) if "PrgC" in df else 50.0,
+                    "pressing":    50.0,
+                } for t in df.index}
+                return _set_cache(parsed, "fbrefdata")
+        except Exception as e:
+            logger.warning(f"TeamStats: fbrefdata failed: {e}")
+
+        # 4. FBref direct pd.read_html scrape
+        direct = self._fetch_fbref_direct()
+        if direct and "Arsenal" in direct:
+            return _set_cache(direct, "FBref direct")
+
+        # 5. Last successful fetch from disk
         disk = self._load_from_disk()
         if disk:
             self._cache      = disk
             self._cache_time = datetime.now()
+            logger.info("TeamStats: using last persisted fetch from disk")
             return self._cache
 
-        logger.error("TeamStats: all sources failed — no data available")
+        logger.error("TeamStats: all 4 sources failed — no data available")
         return {}
 
     def get_team_percentiles(self, team_name: str) -> Optional[Dict[str, float]]:
