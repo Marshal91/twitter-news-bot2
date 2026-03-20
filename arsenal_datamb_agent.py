@@ -114,7 +114,28 @@ EPL_COLOURS = {
     "Arsenal":             "#EF0107",
 }
 
-LAST_FETCH_PATH = "team_stats_last_fetch.json"
+BOOTSTRAP_STATS = {
+    "Liverpool":          {"goals":95.0,"attacking":97.0,"defending":88.0,"possession":82.0,"pressing":91.0,"physicality":88.0,"counters":95.0},
+    "Arsenal":            {"goals":88.0,"attacking":86.0,"defending":94.0,"possession":86.0,"pressing":88.0,"physicality":92.0,"counters":87.0},
+    "Nottingham Forest":  {"goals":72.0,"attacking":61.0,"defending":97.0,"possession":38.0,"pressing":72.0,"physicality":78.0,"counters":55.0},
+    "Chelsea":            {"goals":82.0,"attacking":79.0,"defending":72.0,"possession":78.0,"pressing":68.0,"physicality":68.0,"counters":82.0},
+    "Manchester City":    {"goals":78.0,"attacking":88.0,"defending":76.0,"possession":91.0,"pressing":62.0,"physicality":72.0,"counters":84.0},
+    "Newcastle":          {"goals":80.0,"attacking":72.0,"defending":78.0,"possession":56.0,"pressing":78.0,"physicality":74.0,"counters":65.0},
+    "Aston Villa":        {"goals":75.0,"attacking":74.0,"defending":68.0,"possession":62.0,"pressing":74.0,"physicality":62.0,"counters":72.0},
+    "Brighton":           {"goals":62.0,"attacking":68.0,"defending":62.0,"possession":84.0,"pressing":82.0,"physicality":58.0,"counters":78.0},
+    "Bournemouth":        {"goals":72.0,"attacking":65.0,"defending":58.0,"possession":48.0,"pressing":62.0,"physicality":52.0,"counters":60.0},
+    "Fulham":             {"goals":68.0,"attacking":62.0,"defending":58.0,"possession":52.0,"pressing":56.0,"physicality":56.0,"counters":58.0},
+    "Brentford":          {"goals":65.0,"attacking":58.0,"defending":55.0,"possession":44.0,"pressing":65.0,"physicality":62.0,"counters":52.0},
+    "Tottenham":          {"goals":58.0,"attacking":64.0,"defending":42.0,"possession":68.0,"pressing":58.0,"physicality":48.0,"counters":62.0},
+    "West Ham":           {"goals":48.0,"attacking":52.0,"defending":48.0,"possession":46.0,"pressing":52.0,"physicality":44.0,"counters":46.0},
+    "Crystal Palace":     {"goals":45.0,"attacking":42.0,"defending":45.0,"possession":28.0,"pressing":38.0,"physicality":42.0,"counters":32.0},
+    "Everton":            {"goals":38.0,"attacking":38.0,"defending":52.0,"possession":34.0,"pressing":44.0,"physicality":38.0,"counters":36.0},
+    "Wolves":             {"goals":35.0,"attacking":35.0,"defending":35.0,"possession":42.0,"pressing":42.0,"physicality":32.0,"counters":40.0},
+    "Manchester United":  {"goals":42.0,"attacking":45.0,"defending":38.0,"possession":58.0,"pressing":48.0,"physicality":28.0,"counters":44.0},
+    "Leicester":          {"goals":28.0,"attacking":28.0,"defending":22.0,"possession":32.0,"pressing":28.0,"physicality":22.0,"counters":28.0},
+    "Ipswich":            {"goals":22.0,"attacking":22.0,"defending":18.0,"possession":22.0,"pressing":22.0,"physicality":18.0,"counters":22.0},
+    "Southampton":        {"goals":12.0,"attacking":12.0,"defending":12.0,"possession":12.0,"pressing":12.0,"physicality":12.0,"counters":12.0},
+}
 
 
 class TeamStatsScraper:
@@ -137,6 +158,10 @@ class TeamStatsScraper:
     def __init__(self):
         self._cache:      Optional[Dict] = None
         self._cache_time: Optional[datetime] = None
+        # Seed disk file on very first deploy so there's always a fallback
+        if not os.path.exists(LAST_FETCH_PATH):
+            logger.info("TeamStats: seeding disk with GW31 bootstrap data")
+            self._save_to_disk(BOOTSTRAP_STATS)
 
     def _pct_rank(self, values: Dict[str, float], higher_is_better: bool = True) -> Dict[str, float]:
         s = pd.Series(list(values.values()), index=list(values.keys()))
@@ -1540,9 +1565,9 @@ class ArsenalDataMBAgent:
         rival_pct = self.scraper.get_team_percentiles(rival_team_key)
 
         if not afc_pct:
-            return {"error": "Could not fetch Arsenal stats from Understat or static data. Try again shortly."}
+            return {"error": "Could not fetch Arsenal team stats. Try again in a moment."}
         if not rival_pct:
-            return {"error": f"Could not fetch {rival_team_key} stats from FBref."}
+            return {"error": f"Could not fetch {rival_team_key} team stats. Try again in a moment."}
 
         labels = [m[0] for m in TEAM_RADAR_METRICS]
         keys   = [m[1] for m in TEAM_RADAR_METRICS]
