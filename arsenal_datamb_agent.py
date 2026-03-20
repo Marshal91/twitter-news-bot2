@@ -114,6 +114,8 @@ EPL_COLOURS = {
     "Arsenal":             "#EF0107",
 }
 
+LAST_FETCH_PATH = "team_stats_last_fetch.json"
+
 BOOTSTRAP_STATS = {
     "Liverpool":          {"goals":95.0,"attacking":97.0,"defending":88.0,"possession":82.0,"pressing":91.0,"physicality":88.0,"counters":95.0},
     "Arsenal":            {"goals":88.0,"attacking":86.0,"defending":94.0,"possession":86.0,"pressing":88.0,"physicality":92.0,"counters":87.0},
@@ -158,8 +160,9 @@ class TeamStatsScraper:
     def __init__(self):
         self._cache:      Optional[Dict] = None
         self._cache_time: Optional[datetime] = None
-        # Seed disk file on very first deploy so there's always a fallback
-        if not os.path.exists(LAST_FETCH_PATH):
+        self._path = "team_stats_last_fetch.json"
+        # Seed disk file on first deploy so there's always a fallback
+        if not os.path.exists(self._path):
             logger.info("TeamStats: seeding disk with GW31 bootstrap data")
             self._save_to_disk(BOOTSTRAP_STATS)
 
@@ -173,7 +176,7 @@ class TeamStatsScraper:
     def _save_to_disk(self, data: Dict) -> None:
         try:
             payload = {"fetched_at": datetime.now().isoformat(), "data": data}
-            with open(LAST_FETCH_PATH, "w") as f:
+            with open(self._path, "w") as f:
                 json.dump(payload, f)
             logger.info(f"TeamStats: saved {len(data)} teams to disk")
         except Exception as e:
@@ -181,9 +184,9 @@ class TeamStatsScraper:
 
     def _load_from_disk(self) -> Optional[Dict]:
         try:
-            if not os.path.exists(LAST_FETCH_PATH):
+            if not os.path.exists(self._path):
                 return None
-            with open(LAST_FETCH_PATH) as f:
+            with open(self._path) as f:
                 payload = json.load(f)
             data = payload.get("data", {})
             if data and "Arsenal" in data:
