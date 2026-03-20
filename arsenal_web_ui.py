@@ -671,6 +671,14 @@ def index():
     return html
 
 
+@app.route("/debug/fbref")
+def debug_fbref():
+    df = agent.fbref.fetch_all_team_stats()
+    if df is None:
+        return jsonify({"error": "FBref fetch failed"})
+    return jsonify({"teams": df.round(1).to_dict(orient="index")})
+
+
 @app.route("/debug/teams")
 def debug_teams():
     teams = sorted(agent.rival_teams.keys())
