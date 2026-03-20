@@ -621,7 +621,7 @@ def index():
         with open("player_stats_last_fetch.json") as f:
             player_payload = json.load(f)
         all_players = player_payload.get("data", {})
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         all_players = {}
 
     # Arsenal players grouped by position
@@ -640,9 +640,10 @@ def index():
             p = info.get("pos", "")
             if not any(p.upper().startswith(a) for a in allowed):
                 continue
-            safe = name.replace('"', '&quot;')
-            lines.append(f'<option value="{safe}">{name} ({p})</option>')
-        return "\n".join(lines)
+            safe_name = name.replace('"', '&quot;').replace('%', '%%')
+            safe_pos  = p.replace('%', '%%')
+            lines.append(f'<option value="{safe_name}">{name} ({p})</option>')
+        return "\n".join(lines) if lines else '<option disabled>No player data — run push_players_from_files.py</option>'
 
     # All non-Arsenal players grouped by team for rival dropdown
     rival_teams_in_data = sorted(set(
@@ -650,9 +651,9 @@ def index():
         if "Arsenal" not in str(info.get("team", "")) and info.get("team")
     ))
     team_opts_html = "\n".join(
-        f'<option value="{t}">{t}</option>'
+        f'<option value="{t.replace(chr(37), chr(37)+chr(37))}">{t}</option>'
         for t in rival_teams_in_data
-    )
+    ) if rival_teams_in_data else '<option disabled>No team data</option>'
 
     # Team vs team options
     def team_opts():
