@@ -1324,6 +1324,7 @@ class ArsenalNarrativeGenerator:
         tone: str = "hype",
         custom_note: str = "",
     ) -> str:
+        label_a = arsenal_player
         top_3 = sorted(metrics, key=lambda x: x[1] - x[2], reverse=True)[:3]
         advantages = "\n".join(
             [f"  • {m[0]}: {label_a} {m[1]:.0f}th pct vs {rival_player} {m[2]:.0f}th pct"
@@ -1333,7 +1334,6 @@ class ArsenalNarrativeGenerator:
              for m in sorted(metrics, key=lambda x: x[1], reverse=True)[:3]]
         )
 
-        label_a = arsenal_player
         comparison_line = (
             f"Comparing {label_a} vs {rival_player} using DataMB stats."
             if rival_player else
