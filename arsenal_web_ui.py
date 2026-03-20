@@ -671,12 +671,44 @@ def index():
     return html
 
 
+@app.route("/debug/stats")
+def debug_stats():
+    """Shows current team stats source and Arsenal percentiles."""
+    data = agent.scraper.fetch_all_team_stats()
+    return jsonify({
+        "teams":   len(data),
+        "arsenal": data.get("Arsenal"),
+        "all_teams": sorted(data.keys()),
+    })
+
+
+@app.route("/refresh-stats", methods=["POST"])
+def refresh_stats():
+    """
+    Accepts fresh team stats POSTed from a local machine (bypasses cloud IP blocks).
+    Body: {"secret": "...", "data": {"Arsenal": {...}, "Liverpool": {...}, ...}}
+    """
+    REFRESH_SECRET = os.getenv("REFRESH_SECRET", "arsenal-refresh-2526")
+    payload = request.get_json(force=True, silent=True) or {}
+    if payload.get("secret") != REFRESH_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = payload.get("data", {})
+    if not data or "Arsenal" not in data:
+        return jsonify({"error": "Invalid data — must include Arsenal"}), 400
+    agent.scraper._save_to_disk(data)
+    agent.scraper._cache      = data
+    agent.scraper._cache_time = __import__("datetime").datetime.now()
+    logger.info(f"Stats refreshed via /refresh-stats: {len(data)} teams")
+    return jsonify({"ok": True, "teams": len(data), "arsenal": data.get("Arsenal")})
+
+
 @app.route("/debug/fbref")
 def debug_fbref():
-    df = agent.fbref.fetch_all_team_stats()
-    if df is None:
-        return jsonify({"error": "FBref fetch failed"})
-    return jsonify({"teams": df.round(1).to_dict(orient="index")})
+    data = agent.scraper.fetch_all_team_stats()
+    if not data:
+        return jsonify({"error": "Stats fetch failed"})
+    source = "static" if agent.scraper._using_static else "live (Understat)"
+    return jsonify({"source": source, "teams": data})
 
 
 @app.route("/debug/teams")
