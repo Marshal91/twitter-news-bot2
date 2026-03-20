@@ -1,5 +1,4 @@
 """
-# Arsenal DataMB X Agent — Web UI v2
 Arsenal DataMB X Agent — Web UI + Auto-Scheduler
 Run:  gunicorn arsenal_web_ui:app --workers 1 --threads 2 --bind 0.0.0.0:$PORT
 """
@@ -434,39 +433,41 @@ document.getElementById('narrative-text').addEventListener('input', function(){
   document.getElementById('char-count').textContent = this.value.length;
 });
 
-async function loadRivalPlayers(teamId) {
+async function loadRivalPlayers(teamName) {
   var sel     = document.getElementById('rival-player-select');
   var loading = document.getElementById('player-loading');
-  var manual  = document.getElementById('rival-player-manual');
-  if (!teamId) { sel.style.display='none'; return; }
+  if (!teamName) { sel.style.display='none'; loading.style.display='none'; return; }
   loading.style.display = 'block';
   sel.style.display = 'none';
   try {
-    var resp = await fetch('/squad/' + teamId);
+    var resp = await fetch('/players_for_team?team=' + encodeURIComponent(teamName));
     var data = await resp.json();
     sel.innerHTML = '<option value="">&#8212; Select rival player &#8212;</option>';
     if (data.players && data.players.length) {
-      var groups = {Goalkeeper:[],Defender:[],Midfielder:[],Attacker:[],Other:[]};
+      var groups = {GK:[],DF:[],MF:[],FW:[]};
+      var posLabel = {GK:'Goalkeepers',DF:'Defenders',MF:'Midfielders',FW:'Forwards'};
       data.players.forEach(function(p){
-        var g = groups[p.position] ? p.position : 'Other';
+        var g = p.pos && groups[p.pos] !== undefined ? p.pos : 'MF';
+        if(!groups[g]) groups[g] = [];
         groups[g].push(p);
       });
-      ['Goalkeeper','Defender','Midfielder','Attacker','Other'].forEach(function(pos){
-        if (!groups[pos].length) return;
+      ['GK','DF','MF','FW'].forEach(function(pos){
+        if (!groups[pos] || !groups[pos].length) return;
         var grp = document.createElement('optgroup');
-        grp.label = pos;
+        grp.label = posLabel[pos] || pos;
         groups[pos].forEach(function(p){
           var opt = document.createElement('option');
-          opt.value = p.name; opt.textContent = p.name;
+          opt.value = p.name;
+          opt.textContent = p.name;
           grp.appendChild(opt);
         });
         sel.appendChild(grp);
       });
       sel.style.display = 'block';
-    } else {
-      manual.placeholder = 'Type rival player name (squad not found)';
     }
-  } catch(e) { manual.placeholder = 'Type rival player name'; }
+  } catch(e) {
+    document.getElementById('rival-player-manual').placeholder = 'Type rival player name';
+  }
   loading.style.display = 'none';
 }
 
@@ -485,22 +486,10 @@ async function generate() {
     var sel = document.getElementById('arsenal-player');
     var opt = sel.options[sel.selectedIndex];
     if (!opt || !opt.value) { showStatus('error','Select an Arsenal player'); resetBtn(); return; }
-    try {
-      var pdata = JSON.parse(opt.dataset.json.replace(/&quot;/g, '"'));
-      payload.arsenal_player_id   = pdata.id;
-      payload.arsenal_player_name = pdata.name;
-      payload.arsenal_pos         = pdata.pos;
-    } catch(e) {
-      // Fallback to value only
-      payload.arsenal_player_id   = parseInt(opt.value);
-      payload.arsenal_player_name = opt.textContent.split(' (')[0];
-      payload.arsenal_pos         = 'MF';
-    }
+    payload.arsenal_player_name = opt.value;
     var selVal    = document.getElementById('rival-player-select').value;
     var manualVal = document.getElementById('rival-player-manual').value.trim();
-    payload.rival_player  = selVal || manualVal;
-    payload.rival_team_id = document.getElementById('rival-team-for-player').value || null;
-    if (!payload.arsenal_player_id) { showStatus('error','Select an Arsenal player'); resetBtn(); return; }
+    payload.rival_player = selVal || manualVal;
   } else {
     payload.mode       = 'team';
     payload.rival_team = document.getElementById('rival-team-team').value;
@@ -627,49 +616,80 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    # Build Arsenal player options from live squad cache
-    # Store id/pos/name as a JSON data attribute to avoid HTML escaping issues
-    def afc_opts(api_positions):
+    # Load player stats from disk to populate dropdowns
+    try:
+        with open("player_stats_last_fetch.json") as f:
+            player_payload = json.load(f)
+        all_players = player_payload.get("data", {})
+    except FileNotFoundError:
+        all_players = {}
+
+    # Arsenal players grouped by position
+    def afc_opts(pos_group):
+        pos_map = {
+            "GK":  ["GK"],
+            "DF":  ["DF", "CB", "LB", "RB", "WB"],
+            "MF":  ["MF", "CM", "DM", "AM"],
+            "FW":  ["FW", "LW", "RW", "ST"],
+        }
+        allowed = pos_map.get(pos_group, [])
         lines = []
-        for p in agent.arsenal_squad:
-            if p.get("api_pos", p["pos"]) not in api_positions:
+        for name, info in sorted(all_players.items()):
+            if "Arsenal" not in str(info.get("team", "")):
                 continue
-            # Use data-json to avoid apostrophe/special char issues in attributes
-            import json as _json
-            data = _json.dumps({"id": p["id"], "name": p["name"], "pos": p["pos"]})
-            # Escape for HTML attribute
-            data = data.replace('"', "&quot;")
-            lines.append(
-                f'<option value="{p["id"]}" data-json="{data}">'
-                f'{p["name"]} ({p["pos"]})</option>'
-            )
+            p = info.get("pos", "")
+            if not any(p.upper().startswith(a) for a in allowed):
+                continue
+            safe = name.replace('"', '&quot;')
+            lines.append(f'<option value="{safe}">{name} ({p})</option>')
         return "\n".join(lines)
 
-    # Build rival team options from live cache
-    def team_player_opts(league_id):
-        return "\n".join(
-            f'<option value="{info["id"]}">{name}</option>'
-            for name, info in sorted(agent.rival_teams.items())
-            if info.get("league") == league_id
-        )
+    # All non-Arsenal players grouped by team for rival dropdown
+    rival_teams_in_data = sorted(set(
+        info["team"] for info in all_players.values()
+        if "Arsenal" not in str(info.get("team", "")) and info.get("team")
+    ))
+    team_opts_html = "\n".join(
+        f'<option value="{t}">{t}</option>'
+        for t in rival_teams_in_data
+    )
 
-    def team_opts(league_id):
+    # Team vs team options
+    def team_opts():
         return "\n".join(
             f'<option value="{name}">{name}</option>'
-            for name, info in sorted(agent.rival_teams.items())
-            if info.get("league") == league_id
+            for name in sorted(agent.rival_teams.keys())
         )
 
     html = HTML % {
-        "gk_options":              afc_opts(["Goalkeeper"]),
-        "def_options":             afc_opts(["Defender"]),
-        "mid_options":             afc_opts(["Midfielder"]),
-        "fwd_options":             afc_opts(["Attacker"]),
-        "pl_options":              team_player_opts(39),
-        "pl_team_options":         team_opts(39),
-        "schedule_json":           json.dumps(SCHEDULE),
+        "gk_options":      afc_opts("GK"),
+        "def_options":     afc_opts("DF"),
+        "mid_options":     afc_opts("MF"),
+        "fwd_options":     afc_opts("FW"),
+        "pl_options":      team_opts_html,
+        "pl_team_options": team_opts(),
+        "schedule_json":   json.dumps(SCHEDULE),
     }
     return html
+
+
+@app.route("/players_for_team")
+def players_for_team():
+    """Returns players from FBref data for a given team name."""
+    team = request.args.get("team", "")
+    try:
+        with open("player_stats_last_fetch.json") as f:
+            payload = json.load(f)
+        data = payload.get("data", {})
+        players = [
+            {"name": name, "pos": info.get("pos", ""), "minutes": info.get("minutes", 0)}
+            for name, info in data.items()
+            if team.lower() in str(info.get("team", "")).lower()
+        ]
+        players.sort(key=lambda p: (["GK","DF","MF","FW"].index(p["pos"]) if p["pos"] in ["GK","DF","MF","FW"] else 9, p["name"]))
+        return jsonify({"players": players})
+    except FileNotFoundError:
+        return jsonify({"players": [], "error": "No player data"})
 
 
 @app.route("/debug/stats")
@@ -802,17 +822,13 @@ def generate():
         logger.info(f"Generate request: mode={mode} tone={tone} data_keys={list(data.keys())}")
 
         if mode == "player":
-            rival_team_id = data.get("rival_team_id")
-            player_id = data.get("arsenal_player_id")
-            if not player_id:
+            arsenal_player_name = data.get("arsenal_player_name", "")
+            if not arsenal_player_name:
                 return jsonify({"error": "No Arsenal player selected"})
 
             result = agent.build_player_comparison(
-                arsenal_player_id=int(player_id),
-                arsenal_player_name=data.get("arsenal_player_name", "Unknown"),
-                arsenal_pos=data.get("arsenal_pos", "MF"),
-                rival_name=data.get("rival_player", ""),
-                rival_team_id=int(rival_team_id) if rival_team_id else None,
+                arsenal_player_name=arsenal_player_name,
+                rival_player_name=data.get("rival_player", ""),
                 tone=tone,
                 custom_note=custom_note,
             )
