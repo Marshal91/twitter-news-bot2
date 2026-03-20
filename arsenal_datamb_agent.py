@@ -596,29 +596,47 @@ class StatsExtractor:
         return stats
 
     def extract_team_radar_values(self, team_stats: Dict) -> Dict[str, float]:
-        """Maps API-Football team stats to radar keys (raw values for percentile calc)."""
+        """Maps API-Football team stats to radar keys. Returns values scaled 0-100."""
         if not team_stats:
             return {}
-        f = team_stats.get("fixtures", {})
-        g = team_stats.get("goals", {})
-        p = team_stats.get("passes", {})
 
-        played      = f.get("played", {}).get("total") or 1
-        goals_for   = g.get("for", {}).get("total", {}).get("total") or 0
-        goals_ag    = g.get("against", {}).get("total", {}).get("total") or 0
-        wins        = f.get("wins", {}).get("total") or 0
-        clean_sh    = team_stats.get("clean_sheet", {}).get("total") or 0
-        pass_total  = p.get("total") or 0
-        pass_acc    = p.get("accuracy") or 60
+        f  = team_stats.get("fixtures", {})
+        g  = team_stats.get("goals", {})
+        p  = team_stats.get("passes", {})
+        cs = team_stats.get("clean_sheet", {})
+
+        played     = f.get("played", {}).get("total") or 1
+        wins       = f.get("wins", {}).get("total") or 0
+        goals_for  = g.get("for",     {}).get("total", {}).get("total") or 0
+        goals_ag   = g.get("against", {}).get("total", {}).get("total") or 0
+        clean_sh   = cs.get("total") or 0
+        pass_acc   = float(p.get("accuracy") or 60)
+
+        gf_per90   = goals_for  / played
+        ga_per90   = goals_ag   / played
+        win_rate   = wins / played          # 0.0 – 1.0
+        cs_rate    = clean_sh / played      # 0.0 – 1.0
+
+        # Scale each to a 0-100 range using realistic PL bounds:
+        #   goals/game: 0.5 (worst) → 3.0 (best) → mapped to 0-100
+        #   defending:  low GA is better — invert: 0.5 GA = 100, 3.0 GA = 0
+        #   possession: pass accuracy 50%=0, 90%=100
+        #   pressing:   win rate 0=0, 1.0=100
+        #   physicality: clean sheet rate 0=0, 0.6=100
+        #   attacking = goals (same scale, separate axis)
+        #   counters  = win rate, slightly adjusted
+        def scale(val, lo, hi):
+            """Linear scale val from [lo,hi] to [0,100], clamped."""
+            return min(max(round((val - lo) / (hi - lo) * 100, 1), 0), 99)
 
         return {
-            "goals":       goals_for / played,
-            "attacking":   goals_for / played,
-            "defending":   1 / (goals_ag / played + 0.01),  # inverted
-            "possession":  float(pass_acc),
-            "pressing":    wins / played * 100,
-            "physicality": clean_sh / played * 100,
-            "counters":    wins / played * 80,
+            "goals":       scale(gf_per90,          0.5, 3.0),
+            "attacking":   scale(gf_per90,          0.5, 3.0),
+            "defending":   scale(3.0 - ga_per90,    0.0, 2.5),   # inverted: less GA = better
+            "possession":  scale(pass_acc,          55,  90),
+            "pressing":    scale(win_rate * 100,    20,  80),
+            "physicality": scale(cs_rate * 100,     5,   60),
+            "counters":    scale(win_rate * 100,    15,  75),
         }
 
     def percentile_normalise(
@@ -641,9 +659,10 @@ class StatsExtractor:
             "off_duels_won": 5, "interceptions": 3, "touches_box": 5,
             "goal_conv": 40, "accurate_crosses": 2.5, "clean_sheets": 30,
             "save_pct": 82, "prevented_goals": 2,
-            # team
-            "goals": 3.5, "attacking": 3.5, "defending": 20,
-            "possession": 72, "pressing": 80, "physicality": 60, "counters": 70,
+            # Team metrics are pre-scaled to 0-100 in extract_team_radar_values
+            # so they use max=100 here (pass-through)
+            "goals": 100, "attacking": 100, "defending": 100,
+            "possession": 100, "pressing": 100, "physicality": 100, "counters": 100,
         }
         maxima = league_max or DEFAULT_MAX
         out = {}
@@ -1006,7 +1025,14 @@ class ArsenalDataMBAgent:
 
         afc_raw = self.extractor.extract_player_radar_values(afc_data, arsenal_pos)
         afc_pct = self.extractor.percentile_normalise(afc_raw)
-        vals_a  = [afc_pct.get(k, 50) for k in metric_keys]
+
+        if not afc_pct:
+            return {"error": f"No stat data returned for {arsenal_player_name} — they may not have enough minutes this season."}
+
+        vals_a = [afc_pct[k] for k in metric_keys if k in afc_pct]
+        if len(vals_a) != len(metric_keys):
+            missing = [k for k in metric_keys if k not in afc_pct]
+            return {"error": f"Incomplete stats for {arsenal_player_name}. Missing: {missing}"}
 
         # Rival player stats
         vals_b     = None
@@ -1018,7 +1044,11 @@ class ArsenalDataMBAgent:
             if rival_data:
                 rival_raw = self.extractor.extract_player_radar_values(rival_data, arsenal_pos)
                 rival_pct = self.extractor.percentile_normalise(rival_raw)
-                vals_b    = [rival_pct.get(k, 40) for k in metric_keys]
+                if rival_pct and all(k in rival_pct for k in metric_keys):
+                    vals_b = [rival_pct[k] for k in metric_keys]
+                else:
+                    logger.warning(f"Incomplete stats for rival {rival_name} — plotting Arsenal only")
+                    rival_data = None
 
         rival_display = rival_data["player"]["name"] if rival_data else None
         title    = f"{arsenal_player_name}  {'vs  ' + rival_display if rival_display else ''}"
@@ -1067,15 +1097,10 @@ class ArsenalDataMBAgent:
         afc_stats   = self.api_client.get_team_stats(ARSENAL_TEAM_ID, PL_LEAGUE_ID, STANDINGS_SEASON)
         rival_stats = self.api_client.get_team_stats(rival_info["id"], rival_league_id, STANDINGS_SEASON)
 
-        logger.info(f"Team stats — Arsenal: {'OK' if afc_stats else 'NONE'}, {rival_team_key}: {'OK' if rival_stats else 'NONE'}")
-        if afc_stats:
-            logger.info(f"Arsenal raw stats keys: {list(afc_stats.keys())}")
-
-        afc_raw   = self.extractor.extract_team_radar_values(afc_stats)
-        rival_raw = self.extractor.extract_team_radar_values(rival_stats)
-
-        logger.info(f"Arsenal extracted: {afc_raw}")
-        logger.info(f"Rival extracted: {rival_raw}")
+        if not afc_stats:
+            return {"error": "Could not fetch Arsenal team stats from API."}
+        if not rival_stats:
+            return {"error": f"Could not fetch {rival_team_key} team stats from API."}
 
         afc_raw   = self.extractor.extract_team_radar_values(afc_stats)
         rival_raw = self.extractor.extract_team_radar_values(rival_stats)
@@ -1084,8 +1109,14 @@ class ArsenalDataMBAgent:
 
         labels = [m[0] for m in TEAM_RADAR_METRICS]
         keys   = [m[1] for m in TEAM_RADAR_METRICS]
-        vals_a = [afc_pct.get(k, 50) for k in keys]
-        vals_b = [rival_pct.get(k, 40) for k in keys]
+
+        if not all(k in afc_pct for k in keys):
+            return {"error": "Incomplete Arsenal team stats — try again shortly."}
+        if not all(k in rival_pct for k in keys):
+            return {"error": f"Incomplete {rival_team_key} team stats — try again shortly."}
+
+        vals_a = [afc_pct[k] for k in keys]
+        vals_b = [rival_pct[k] for k in keys]
 
         rival_league_name = LEAGUE_NAMES.get(rival_league_id, "Premier League")
         title    = f"Arsenal FC  vs  {rival_team_key}"
