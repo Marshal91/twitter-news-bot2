@@ -14,3 +14,5 @@ matplotlib==3.9.2
 numpy==1.26.4
 flask==3.0.3
 gunicorn
+pandas==2.2.2
+lxml==5.2.2
