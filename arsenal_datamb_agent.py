@@ -172,7 +172,6 @@ class TeamStatsScraper:
         try:
             session = requests.Session()
             session.headers.update(self.HEADERS)
-            # Warm up session with homepage first
             session.get("https://understat.com", timeout=10)
             r = session.get(UNDERSTAT_URL, headers=self.HEADERS, timeout=20)
             r.raise_for_status()
@@ -180,13 +179,16 @@ class TeamStatsScraper:
             html = r.text
             logger.info(f"Understat: page length={len(html)}")
 
-            # Try multiple extraction patterns — Understat has changed format before
+            # Page too small = bot block or redirect
+            if len(html) < 100000:
+                logger.warning(f"Understat: page too small ({len(html)} chars) — likely blocked")
+                return None
+
             patterns = [
                 r"teamsData\s*=\s*JSON\.parse\('(.+?)'\)",
                 r'teamsData\s*=\s*JSON\.parse\("(.+?)"\)',
                 r"teamsData\s*=\s*JSON\.parse\(\'(.+?)\'\)",
                 r'var teamsData\s*=\s*JSON\.parse\(\'(.+?)\'\)',
-                r'"teamsData"\s*:\s*JSON\.parse\(\'(.+?)\'\)',
             ]
 
             raw_str = None
@@ -194,27 +196,29 @@ class TeamStatsScraper:
                 match = re.search(pat, html, re.DOTALL)
                 if match:
                     raw_str = match.group(1)
-                    logger.info(f"Understat: matched pattern '{pat[:40]}'")
+                    logger.info(f"Understat: matched pattern '{pat[:50]}'")
                     break
 
             if not raw_str:
-                # Try finding any JSON blob with team history data
-                match = re.search(r'JSON\.parse\(\'(\\x.{20,}?)\'\)', html)
-                if match:
-                    raw_str = match.group(1)
-                    logger.info("Understat: matched generic JSON.parse pattern")
-
-            if not raw_str:
-                logger.warning(f"Understat: no teamsData found. Page snippet: {html[2000:2500]}")
+                logger.warning("Understat: no teamsData pattern matched")
                 return None
 
-            # Decode escape sequences
             try:
                 decoded = raw_str.encode("utf-8").decode("unicode_escape")
             except Exception:
                 decoded = raw_str
 
             data = json.loads(decoded)
+
+            # Validate: must be a dict of team dicts with history lists
+            if not isinstance(data, dict):
+                logger.warning(f"Understat: expected dict, got {type(data)}")
+                return None
+            valid = all(isinstance(v, dict) and "history" in v for v in data.values())
+            if not valid:
+                logger.warning("Understat: data structure invalid — missing history keys")
+                return None
+
             logger.info(f"Understat: {len(data)} teams parsed")
             return data
 
