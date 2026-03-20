@@ -89,6 +89,31 @@ UNDERSTAT_NAME_MAP = {
     "Bournemouth":       "Bournemouth",
 }
 
+# Club colours for radar rival polygon
+EPL_COLOURS = {
+    "Liverpool":           "#C8102E",
+    "Manchester City":     "#6CABDD",
+    "Chelsea":             "#034694",
+    "Tottenham":           "#132257",
+    "Manchester United":   "#DA291C",
+    "Newcastle":           "#241F20",
+    "Newcastle United":    "#241F20",
+    "Aston Villa":         "#670E36",
+    "Brighton":            "#0057B8",
+    "West Ham":            "#7A263A",
+    "Fulham":              "#CC0000",
+    "Brentford":           "#E30613",
+    "Crystal Palace":      "#1B458F",
+    "Everton":             "#003399",
+    "Nottingham Forest":   "#DD0000",
+    "Wolves":              "#FDB913",
+    "Leicester":           "#003090",
+    "Ipswich":             "#3A64A3",
+    "Southampton":         "#D71920",
+    "Bournemouth":         "#DA291C",
+    "Arsenal":             "#EF0107",
+}
+
 # Static GW31 2025/26 snapshot — used when Understat is unavailable
 # Percentiles computed vs all 20 PL teams. Update weekly if needed.
 STATIC_2526 = {
@@ -511,10 +536,11 @@ class APIFootballClient:
             tid = t.get("id")
             if not tid or tid == ARSENAL_TEAM_ID:
                 continue
+            name = t.get("name", "")
             teams.append({
                 "id":     tid,
-                "name":   t.get("name", ""),
-                "colour": "#888888",
+                "name":   name,
+                "colour": EPL_COLOURS.get(name, "#4A90D9"),
             })
         return teams
 
@@ -614,7 +640,6 @@ LEAGUE_NAMES = {
 }
 
 # Fallback hardcoded EPL rival teams — names match API-Football exactly
-# Based on confirmed /debug/teams output
 _FALLBACK_RIVAL_TEAMS = {
     "Aston Villa":      {"id": 66,  "league": 39, "colour": "#670E36"},
     "Bournemouth":      {"id": 35,  "league": 39, "colour": "#DA291C"},
@@ -680,7 +705,7 @@ class LiveDataCache:
                 self.rival_teams[t["name"]] = {
                     "id":     t["id"],
                     "league": 39,
-                    "colour": "#888888",
+                    "colour": EPL_COLOURS.get(t["name"], "#4A90D9"),
                 }
             logger.info(f"✅ Premier League: {len(epl_teams)} teams loaded")
         else:
