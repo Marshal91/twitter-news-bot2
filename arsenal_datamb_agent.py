@@ -1302,11 +1302,6 @@ class RadarRenderer:
                 ha=ha, va=va_a, fontsize=9.5, color=self.TEXT_MED,
                 fontweight="500", clip_on=False)
 
-        # Watermark
-        fig.text(0.5, 0.005,
-            f"DataMB  ·  Premier League {season}  ·  Arsenal FC Agent",
-            ha="center", va="bottom", fontsize=7.5, color=self.WATERMARK)
-
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=160,
                     facecolor=self.BG, bbox_inches="tight", pad_inches=0.15)
